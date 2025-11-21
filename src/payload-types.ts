@@ -358,7 +358,7 @@ export interface ContentBlock {
  */
 export interface ReusableContentBlock {
   template: string | Template;
-  overrideContent?: boolean | null;
+  useTemplateValues?: boolean | null;
   content?: ContentBlock[] | null;
   id?: string | null;
   blockName?: string | null;
@@ -868,7 +868,7 @@ export interface ContentBlockSelect<T extends boolean = true> {
  */
 export interface ReusableContentBlockSelect<T extends boolean = true> {
   template?: T;
-  overrideContent?: T;
+  useTemplateValues?: T;
   content?:
     | T
     | {

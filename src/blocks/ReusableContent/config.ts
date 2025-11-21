@@ -13,42 +13,14 @@ export const ReusableContent: Block = {
       required: true,
     },
     {
-      name: 'overrideContent',
+      name: 'useTemplateValues',
       type: 'checkbox',
+      label: 'Use Template Values',
+      defaultValue: true,
       admin: {
         condition: (data, siblingData) => {
           return !!siblingData.template
         },
-      },
-      hooks: {
-        beforeChange: [
-          async ({ data, siblingData, req, value }) => {
-            if (value) {
-              if (siblingData.template) {
-                const templatesCollection = req.payload.collections.templates
-
-                if (
-                  templatesCollection &&
-                  (!siblingData.content || siblingData.content.length === 0)
-                ) {
-                  const templateDoc = await req.payload.findByID({
-                    id: siblingData.template,
-                    collection: 'templates',
-                    req,
-                  })
-
-                  if (templateDoc && 'content' in templateDoc) {
-                    siblingData.content = templateDoc.content
-                  }
-                }
-              }
-            } else {
-              if (siblingData) {
-                siblingData.content = null
-              }
-            }
-          },
-        ],
       },
     },
     {
@@ -56,12 +28,22 @@ export const ReusableContent: Block = {
       type: 'blocks',
       admin: {
         condition: (data, siblingData) => {
-          return Boolean(
-            siblingData.overrideContent && siblingData.content && siblingData.content.length >= 0,
-          )
+          return Boolean(siblingData.content && siblingData.content.length > 0)
         },
       },
       blocks: TemplatesBlocks,
+    },
+    {
+      // Custom UI to manage the content fetched from the selected template
+      name: 'contentManager',
+      type: 'ui',
+      admin: {
+        components: {
+          Field: {
+            path: '@/blocks/ReusableContent/ContentManager#ContentManager',
+          },
+        },
+      },
     },
   ],
   labels: {

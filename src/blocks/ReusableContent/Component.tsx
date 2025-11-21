@@ -8,9 +8,9 @@ import { CMSLink } from '../../components/Link'
 import { RenderBlocks } from '@/blocks/RenderBlocks'
 
 export const ReusableContentBlock: React.FC<ReusableContentBlockProps> = (props) => {
-  const { content, template, overrideContent } = props
+  const { content, template, useTemplateValues } = props
 
-  const contentToRender = overrideContent
+  const contentToRender = !useTemplateValues
     ? content
     : typeof template === 'object'
       ? template?.content

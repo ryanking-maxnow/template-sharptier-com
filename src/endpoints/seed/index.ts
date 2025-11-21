@@ -197,8 +197,8 @@ export const seed = async ({
       collection: 'pages',
       depth: 0,
       data: {
-        title: 'Custom-page',
-        slug: 'custom-page',
+        title: 'Custom page with overridden template content',
+        slug: 'custom-page-with-overridden-template-content',
         hero: {
           type: 'lowImpact',
 
@@ -209,7 +209,7 @@ export const seed = async ({
           {
             blockType: 'reusableContent',
             template: template.id,
-            overrideContent: true,
+            useTemplateValues: false,
             content: [
               {
                 blockType: 'content',
@@ -246,6 +246,27 @@ export const seed = async ({
                 },
               },
             ],
+          },
+        ],
+      },
+    }),
+    payload.create({
+      collection: 'pages',
+      depth: 0,
+      data: {
+        title: 'Custom page with default template content',
+        slug: 'custom-page-with-default-template-content',
+        hero: {
+          type: 'lowImpact',
+
+          links: [],
+        },
+        _status: 'published',
+        layout: [
+          {
+            blockType: 'reusableContent',
+            template: template.id,
+            useTemplateValues: true,
           },
         ],
       },
