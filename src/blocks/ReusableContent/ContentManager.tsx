@@ -82,7 +82,7 @@ export const ContentManager: React.FC<UIFieldClientProps> = (props) => {
                     case 'content': {
                       addFieldRow({
                         // The sub field state is the actual content of the block
-                        // It needs an object of each field in the block, in this case 'richText'
+                        // It needs an object of the state of each field in the block, in this case 'richText'
                         subFieldState: {
                           richText: {
                             value: templateContent[i].richText || null,
