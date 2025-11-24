@@ -4,6 +4,7 @@ import { anyone } from '../access/anyone'
 import { authenticated } from '../access/authenticated'
 import { Content } from '@/blocks/Content/config'
 
+// We need to make sure our ReusableContent block can use the exact same blocks as our Templates collection
 export const TemplatesBlocks: Block[] = [Content]
 
 export const Templates: CollectionConfig = {
