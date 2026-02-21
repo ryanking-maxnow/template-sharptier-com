@@ -1,0 +1,22 @@
+services:
+  nginx.org:
+    ports:
+      - 8001:8080
+    build:
+      dockerfile: dev.Dockerfile
+    develop:
+      watch:
+        - path: ./xml
+          target: /var/www/xml
+          action: sync
+        - path: ./xsls
+          target: /var/www/xsls
+          action: sync
+        - path: ./css
+          target: /var/www/libxslt/css
+          action: sync
+    tmpfs:
+      - /var/www/xslt
+    volumes:
+      - ./docker-nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./xslt/version.xslt:/var/www/xslt/version.xslt

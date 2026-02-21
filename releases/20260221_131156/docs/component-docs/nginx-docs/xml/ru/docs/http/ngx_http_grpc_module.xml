@@ -1,0 +1,958 @@
+<?xml version="1.0"?>
+
+<!--
+  Copyright (C) Igor Sysoev
+  Copyright (C) Nginx, Inc.
+  -->
+
+<!DOCTYPE module SYSTEM "../../../../dtd/module.dtd">
+
+<module name="Модуль ngx_http_grpc_module"
+        link="/ru/docs/http/ngx_http_grpc_module.html"
+        lang="ru"
+        rev="15">
+
+<section id="summary">
+
+<para>
+Модуль <literal>ngx_http_grpc_module</literal> позволяет передавать запросы
+gRPC-серверу (1.13.10).
+Для работы этого модуля необходим
+модуль <link doc="ngx_http_v2_module.xml">ngx_http_v2_module</link>.
+</para>
+
+</section>
+
+
+<section id="example" name="Пример конфигурации">
+
+<para>
+<example>
+server {
+    listen 9000;
+
+    http2 on;
+
+    location / {
+        grpc_pass 127.0.0.1:9000;
+    }
+}
+</example>
+</para>
+
+</section>
+
+
+<section id="directives" name="Директивы">
+
+<directive name="grpc_allow_upstream">
+<syntax><value>строка</value> ...</syntax>
+<default/>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+<appeared-in>1.29.3</appeared-in>
+
+<para>
+Задаёт условия, при которых доступ к gRPC-серверу
+будет разрешён или <link id="denied">запрещён</link>.
+Если все значения строковых параметров непустые
+и не равны “0”, то доступ разрешён.
+Условия проверяются каждый раз
+перед установлением соединения с gRPC-сервером.
+В значении параметров допустимо использование переменных:
+<example>
+geo $upstream_last_addr $allow {
+    volatile;
+    10.10.0.0/24        1;
+}
+
+server {
+    listen 127.0.0.1:8080;
+    http2 on;
+
+    location / {
+        grpc_pass           localhost:9000;
+        grpc_allow_upstream $allow;
+        ...
+    }
+}
+</example>
+</para>
+
+<para>
+<note>
+Директива доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="grpc_bind">
+<syntax>
+    <value>адрес</value>
+    [<literal>transparent </literal>] |
+    <literal>off</literal></syntax>
+<default/>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Задаёт локальный IP-адрес с необязательным портом,
+который будет использоваться в исходящих соединениях с gRPC-сервером.
+В значении параметра допустимо использование переменных.
+Специальное значение <literal>off</literal> отменяет действие
+унаследованной с предыдущего уровня конфигурации
+директивы <literal>grpc_bind</literal>, позволяя системе
+самостоятельно выбирать локальный IP-адрес и порт.
+</para>
+
+<para id="grpc_bind_transparent">
+Параметр <literal>transparent</literal> позволяет
+задать нелокальный IP-aдрес, который будет использоваться в
+исходящих соединениях с gRPC-сервером,
+например, реальный IP-адрес клиента:
+<example>
+grpc_bind $remote_addr transparent;
+</example>
+Для работы параметра
+обычно требуется
+запустить рабочие процессы nginx с привилегиями
+<link doc="../ngx_core_module.xml" id="user">суперпользователя</link>.
+В Linux этого не требуется, так как если
+указан параметр <literal>transparent</literal>, то рабочие процессы
+наследуют capability <literal>CAP_NET_RAW</literal> из главного процесса.
+Также необходимо настроить таблицу маршрутизации ядра
+для перехвата сетевого трафика с gRPC-сервера.
+</para>
+
+</directive>
+
+
+<directive name="grpc_bind_dynamic">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+<appeared-in>1.29.3</appeared-in>
+
+<para>
+Если включено, операция <link id="grpc_bind">bind</link> осуществляется
+при каждой попытке соединения.
+</para>
+
+<para>
+<note>
+Директива доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="grpc_buffer_size">
+<syntax><value>размер</value></syntax>
+<default>4k|8k</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Задаёт <value>размер</value> буфера, в который будет читаться ответ,
+получаемый от gRPC-сервера.
+Ответ синхронно передаётся клиенту сразу же по мере его поступления.
+</para>
+
+</directive>
+
+
+<directive name="grpc_connect_timeout">
+<syntax><value>время</value></syntax>
+<default>60s</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Задаёт таймаут для установления соединения с gRPC-сервером.
+Необходимо иметь в виду, что этот таймаут обычно не может превышать 75 секунд.
+</para>
+
+</directive>
+
+
+<directive name="grpc_hide_header">
+<syntax><value>поле</value></syntax>
+<default/>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+По умолчанию
+nginx не передаёт клиенту поля заголовка <header>Date</header>,
+<header>Server</header> и
+<header>X-Accel-...</header> из ответа gRPC-сервера.
+Директива <literal>grpc_hide_header</literal> задаёт дополнительные поля,
+которые не будут передаваться.
+Если же передачу полей нужно разрешить, можно воспользоваться
+директивой <link id="grpc_pass_header"/>.
+</para>
+
+</directive>
+
+
+<directive name="grpc_ignore_headers">
+<syntax><value>поле</value> ...</syntax>
+<default/>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Запрещает обработку некоторых полей заголовка из ответа gRPC-сервера.
+В директиве можно указать поля <header>X-Accel-Redirect</header>
+и <header>X-Accel-Charset</header>.
+</para>
+
+<para>
+Если не запрещено, обработка этих полей заголовка заключается в следующем:
+<list type="bullet" compact="no">
+
+<listitem>
+<header>X-Accel-Redirect</header> производит
+<link doc="ngx_http_core_module.xml" id="internal">внутреннее
+перенаправление</link> на указанный URI;
+</listitem>
+
+<listitem>
+<header>X-Accel-Charset</header> задаёт желаемую
+<link doc="ngx_http_charset_module.xml" id="charset">кодировку</link>
+ответа.
+</listitem>
+
+</list>
+</para>
+
+</directive>
+
+
+<directive name="grpc_intercept_errors">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Определяет, передавать ли клиенту ответы gRPC-сервера с кодом
+больше либо равным 300,
+или же перехватывать их и перенаправлять на обработку nginx’у с помощью
+директивы <link doc="ngx_http_core_module.xml" id="error_page"/>.
+</para>
+
+</directive>
+
+
+<directive name="grpc_next_upstream">
+<syntax>
+    <literal>error</literal> |
+    <literal>timeout</literal> |
+    <literal>denied</literal> |
+    <literal>invalid_header</literal> |
+    <literal>http_500</literal> |
+    <literal>http_502</literal> |
+    <literal>http_503</literal> |
+    <literal>http_504</literal> |
+    <literal>http_403</literal> |
+    <literal>http_404</literal> |
+    <literal>http_429</literal> |
+    <literal>non_idempotent</literal> |
+    <literal>off</literal>
+    ...</syntax>
+<default>error timeout</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Определяет, в каких случаях запрос будет передан следующему серверу:
+<list type="tag">
+
+<tag-name><literal>error</literal></tag-name>
+<tag-desc>произошла ошибка соединения с сервером, передачи ему запроса или
+чтения заголовка ответа сервера;</tag-desc>
+
+<tag-name><literal>timeout</literal></tag-name>
+<tag-desc>произошёл таймаут во время соединения с сервером,
+передачи ему запроса или чтения заголовка ответа сервера;</tag-desc>
+
+<tag-name id="denied"><literal>denied</literal></tag-name>
+<tag-desc>сервер <link id="proxy_allow_upstream">отклонил</link>
+соединение (1.29.3);
+<para>
+<note>
+Параметр доступен как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+</tag-desc>
+
+<tag-name><literal>invalid_header</literal></tag-name>
+<tag-desc>сервер вернул пустой или неверный ответ;</tag-desc>
+
+<tag-name><literal>http_500</literal></tag-name>
+<tag-desc>сервер вернул ответ с кодом 500;</tag-desc>
+
+<tag-name><literal>http_502</literal></tag-name>
+<tag-desc>сервер вернул ответ с кодом 502;</tag-desc>
+
+<tag-name><literal>http_503</literal></tag-name>
+<tag-desc>сервер вернул ответ с кодом 503;</tag-desc>
+
+<tag-name><literal>http_504</literal></tag-name>
+<tag-desc>сервер вернул ответ с кодом 504;</tag-desc>
+
+<tag-name><literal>http_403</literal></tag-name>
+<tag-desc>сервер вернул ответ с кодом 403;</tag-desc>
+
+<tag-name><literal>http_404</literal></tag-name>
+<tag-desc>сервер вернул ответ с кодом 404;</tag-desc>
+
+<tag-name><literal>http_429</literal></tag-name>
+<tag-desc>сервер вернул ответ с кодом 429;</tag-desc>
+
+<tag-name id="non_idempotent"><literal>non_idempotent</literal></tag-name>
+<tag-desc>обычно запросы с
+<link url="https://datatracker.ietf.org/doc/html/rfc7231#section-4.2.2">неидемпотентным</link>
+методом
+(<literal>POST</literal>, <literal>LOCK</literal>, <literal>PATCH</literal>)
+не передаются на другой сервер,
+если запрос серверу группы уже был отправлен;
+включение параметра явно разрешает повторять подобные запросы;
+</tag-desc>
+
+
+<tag-name><literal>off</literal></tag-name>
+<tag-desc>запрещает передачу запроса следующему серверу.</tag-desc>
+
+</list>
+</para>
+
+<para>
+Необходимо понимать, что передача запроса следующему серверу возможна
+только при условии, что клиенту ещё ничего не передавалось.
+То есть, если ошибка или таймаут возникли в середине передачи ответа,
+то исправить это уже невозможно.
+</para>
+
+<para>
+Директива также определяет, что считается
+<link doc="ngx_http_upstream_module.xml" id="max_fails">неудачной
+попыткой</link> работы с сервером.
+Случаи <literal>error</literal>, <literal>timeout</literal>,
+<literal>denied</literal> и
+<literal>invalid_header</literal>
+всегда считаются неудачными попытками, даже если они не указаны в директиве.
+Случаи <literal>http_500</literal>, <literal>http_502</literal>,
+<literal>http_503</literal>, <literal>http_504</literal>
+и <literal>http_429</literal>
+считаются неудачными попытками, только если они указаны в директиве.
+Случаи <literal>http_403</literal> и <literal>http_404</literal>
+никогда не считаются неудачными попытками.
+</para>
+
+<para>
+Передача запроса следующему серверу может быть ограничена по
+<link id="grpc_next_upstream_tries">количеству попыток</link>
+и по <link id="grpc_next_upstream_timeout">времени</link>.
+</para>
+
+</directive>
+
+
+<directive name="grpc_next_upstream_timeout">
+<syntax><value>время</value></syntax>
+<default>0</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Ограничивает время, в течение которого возможна передача запроса
+<link id="grpc_next_upstream">следующему серверу</link>.
+Значение <literal>0</literal> отключает это ограничение.
+</para>
+
+</directive>
+
+
+<directive name="grpc_next_upstream_tries">
+<syntax><value>число</value></syntax>
+<default>0</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Ограничивает число допустимых попыток для передачи запроса
+<link id="grpc_next_upstream">следующему серверу</link>.
+Значение <literal>0</literal> отключает это ограничение.
+</para>
+
+</directive>
+
+
+<directive name="grpc_pass">
+<syntax><value>адрес</value></syntax>
+<default/>
+<context>location</context>
+<context>if в location</context>
+
+<para>
+Задаёт адрес gRPC-сервера.
+Адрес может быть указан в виде доменного имени или IP-адреса,
+и порта:
+<example>
+grpc_pass localhost:9000;
+</example>
+или в виде пути UNIX-сокета:
+<example>
+grpc_pass unix:/tmp/grpc.socket;
+</example>
+Также может использоваться схема “<literal>grpc://</literal>”:
+<example>
+grpc_pass grpc://127.0.0.1:9000;
+</example>
+Для использования gRPC по SSL необходимо использовать схему
+“<literal>grpcs://</literal>”:
+<example>
+grpc_pass grpcs://127.0.0.1:443;
+</example>
+</para>
+
+<para>
+Если доменному имени соответствует несколько адресов, то все они будут
+использоваться по очереди (round-robin).
+И, кроме того, адрес может быть
+<link doc="ngx_http_upstream_module.xml">группой серверов</link>.
+</para>
+
+<para>
+В значении параметра можно использовать переменные (1.17.8).
+В этом случае, если адрес указан в виде доменного имени,
+имя ищется среди описанных
+<link doc="ngx_http_upstream_module.xml">групп серверов</link>
+и если не найдено, то определяется с помощью
+<link doc="ngx_http_core_module.xml" id="resolver"/>’а.
+</para>
+
+</directive>
+
+
+<directive name="grpc_pass_header">
+<syntax><value>поле</value></syntax>
+<default/>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Разрешает передавать от gRPC-сервера клиенту
+<link id="grpc_hide_header">запрещённые для передачи</link> поля заголовка.
+</para>
+
+</directive>
+
+
+<directive name="grpc_read_timeout">
+<syntax><value>время</value></syntax>
+<default>60s</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Задаёт таймаут при чтении ответа gRPC-сервера.
+Таймаут устанавливается не на всю передачу ответа,
+а только между двумя операциями чтения.
+Если по истечении этого времени gRPC-сервер ничего не передаст,
+соединение закрывается.
+</para>
+
+</directive>
+
+
+<directive name="grpc_request_dynamic">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+<appeared-in>1.29.3</appeared-in>
+
+<para>
+Разрешает или запрещает создание отдельного экземпляра запроса
+для каждого gRPC-сервера.
+По умолчанию для всех gRPC-серверов используется единый запрос.
+Если разрешено, то для каждого сервера создаётся отдельный экземпляр запроса,
+что позволяет кастомизировать запрос для конкретного сервера.
+Например каждому серверу можно назначить своё значение 
+поля <header>Host</header> в заголовке запроса:
+<example>
+grpc_request_dynamic on;
+grpc_set_header      Host $upstream_last_server_name;
+</example>
+</para>
+
+<para>
+<note>  
+Директива доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="grpc_send_timeout">
+<syntax><value>время</value></syntax>
+<default>60s</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Задаёт таймаут при передаче запроса gRPC-серверу.
+Таймаут устанавливается не на всю передачу запроса,
+а только между двумя операциями записи.
+Если по истечении этого времени gRPC-сервер не примет новых данных,
+соединение закрывается.
+</para>
+
+</directive>
+
+
+<directive name="grpc_set_header">
+<syntax><value>поле</value> <value>значение</value></syntax>
+<default>Content-Length $content_length</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Позволяет переопределять или добавлять поля заголовка запроса,
+<link id="proxy_pass_request_headers">передаваемые</link> gRPC-серверу.
+В качестве значения можно использовать текст, переменные и их комбинации.
+Директивы наследуются с предыдущего уровня конфигурации при условии, что
+на данном уровне не описаны свои директивы <literal>grpc_set_header</literal>.
+</para>
+
+<para>
+Если значение поля заголовка — пустая строка, то поле вообще
+не будет передаваться gRPC-серверу:
+<example>
+grpc_set_header Accept-Encoding "";
+</example>
+</para>
+
+</directive>
+
+
+<directive name="grpc_socket_keepalive">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+<appeared-in>1.15.6</appeared-in>
+
+<para>
+Конфигурирует поведение “TCP keepalive”
+для исходящих соединений к gRPC-серверу.
+По умолчанию для сокета действуют настройки операционной системы.
+Если указано значение “<literal>on</literal>”, то
+для сокета включается параметр <c-def>SO_KEEPALIVE</c-def>.
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_certificate">
+<syntax><value>файл</value></syntax>
+<default/>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Задаёт <value>файл</value> с сертификатом в формате PEM
+для аутентификации на gRPC SSL-сервере.
+</para>
+
+<para id="grpc_ssl_certificate_variables">
+Начиная с версии 1.21.0 в имени файла можно использовать переменные.
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_certificate_cache">
+<syntax><literal>off</literal></syntax>
+<syntax>
+    <literal>max</literal>=<value>N</value>
+    [<literal>inactive</literal>=<value>время</value>]
+    [<literal>valid</literal>=<value>время</value>]</syntax>
+<default>off</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+<appeared-in>1.27.4</appeared-in>
+
+<para>
+Задаёт кэш, в котором могут храниться
+<link id="grpc_ssl_certificate">SSL-сертификаты</link> и
+<link id="grpc_ssl_certificate_key">секретные ключи</link>,
+полученные из <link id="grpc_ssl_certificate_key_variables">переменных</link>.
+</para>
+
+<para>
+У директивы есть следующие параметры:
+<list type="tag">
+
+<tag-name id="grpc_ssl_certificate_cache_max">
+<literal>max</literal>
+</tag-name>
+<tag-desc>
+задаёт максимальное число элементов в кэше;
+при переполнении кэша удаляются наименее востребованные элементы (LRU);
+</tag-desc>
+
+<tag-name id="grpc_ssl_certificate_cache_inactive">
+<literal>inactive</literal>
+</tag-name>
+<tag-desc>
+задаёт время, после которого элемент кэша удаляется,
+если к нему не было обращений в течение этого времени;
+по умолчанию 10 секунд;
+</tag-desc>
+
+<tag-name id="grpc_ssl_certificate_cache_valid">
+<literal>valid</literal>
+</tag-name>
+<tag-desc>
+задает время, в течение которого
+элемент кэша считается действительным
+и может быть повторно использован,
+по умолчанию 60 секунд.
+По завершении этого времени сертификат будет обновлён или повторно проверен;
+</tag-desc>
+
+<tag-name id="grpc_ssl_certificate_cache_off">
+<literal>off</literal>
+</tag-name>
+<tag-desc>
+запрещает кэш.
+</tag-desc>
+
+</list>
+</para>
+
+<para>
+Пример:
+<example>
+grpc_ssl_certificate       $grpc_ssl_server_name.crt;
+grpc_ssl_certificate_key   $grpc_ssl_server_name.key;
+grpc_ssl_certificate_cache max=1000 inactive=20s valid=1m;
+</example>
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_certificate_key">
+<syntax><value>файл</value></syntax>
+<default/>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Задаёт <value>файл</value> с секретным ключом в формате PEM
+для аутентификации на gRPC SSL-сервере.
+</para>
+
+<para>
+Вместо <value>файла</value> можно указать значение
+<literal>engine</literal>:<value>имя</value>:<value>id</value>,
+которое загружает ключ с указанным <value>id</value>
+из OpenSSL engine с заданным <value>именем</value>.
+</para>
+
+<para>
+Вместо <value>файла</value> можно указать значение
+<literal>store</literal>:<value>схема</value>:<value>id</value> (1.29.0),
+которое используется для загрузки ключа с указанным <value>id</value>
+и зарегистрированной провайдером OpenSSL <value>схемой</value> URI, такой как
+<link url="https://datatracker.ietf.org/doc/html/rfc7512"><literal>pkcs11</literal></link>.
+</para>
+
+<para id="grpc_ssl_certificate_key_variables">
+Начиная с версии 1.21.0 в имени файла можно использовать переменные.
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_ciphers">
+<syntax><value>шифры</value></syntax>
+<default>DEFAULT</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Описывает разрешённые шифры для запросов к gRPC SSL-серверу.
+Шифры задаются в формате, поддерживаемом библиотекой OpenSSL.
+</para>
+
+<para>
+Полный список можно посмотреть с помощью команды
+“<command>openssl ciphers</command>”.
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_conf_command">
+<syntax><value>имя</value> <value>значение</value></syntax>
+<default/>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+<appeared-in>1.19.4</appeared-in>
+
+<para>
+Задаёт произвольные конфигурационные
+<link url="https://www.openssl.org/docs/man1.1.1/man3/SSL_CONF_cmd.html">команды</link>
+OpenSSL
+при установлении соединения с gRPC SSL-сервером.
+<note>
+Директива поддерживается при использовании OpenSSL 1.0.2 и выше.
+</note>
+</para>
+
+<para>
+На одном уровне может быть указано
+несколько директив <literal>grpc_ssl_conf_command</literal>.
+Директивы наследуются с предыдущего уровня конфигурации при условии, что
+на данном уровне не описаны
+свои директивы <literal>grpc_ssl_conf_command</literal>.
+</para>
+
+<para>
+<note>
+Следует учитывать, что изменение настроек OpenSSL напрямую
+может привести к неожиданному поведению.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_crl">
+<syntax><value>файл</value></syntax>
+<default/>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Указывает <value>файл</value> с отозванными сертификатами (CRL)
+в формате PEM, используемыми при <link id="proxy_ssl_verify">проверке</link>
+сертификата gRPC SSL-сервера.
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_key_log">
+<syntax>путь</syntax>
+<default/>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+<appeared-in>1.27.2</appeared-in>
+
+<para>
+Включает логирование SSL-ключей соединений с gRPC SSL-сервером
+и указывает путь к лог-файлу ключей.
+Ключи записываются в формате
+<link url="https://datatracker.ietf.org/doc/html/draft-ietf-tls-keylogfile">SSLKEYLOGFILE</link>
+совместимом с Wireshark.
+</para>
+
+<para>
+<note>
+Директива доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_name">
+<syntax><value>имя</value></syntax>
+<default>имя хоста из grpc_pass</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Позволяет переопределить имя сервера, используемое при
+<link id="grpc_ssl_verify">проверке</link>
+сертификата gRPC SSL-сервера, а также для
+<link id="grpc_ssl_server_name">передачи его через SNI</link>
+при установлении соединения с gRPC SSL-сервером.
+</para>
+
+<para>
+По умолчанию используется имя хоста из <link id="grpc_pass"/>.
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_password_file">
+<syntax><value>файл</value></syntax>
+<default/>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Задаёт <value>файл</value> с паролями от
+<link id="grpc_ssl_certificate_key">секретных ключей</link>,
+где каждый пароль указан на отдельной строке.
+Пароли применяются по очереди в момент загрузки ключа.
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_protocols">
+<syntax>
+    [<literal>SSLv2</literal>]
+    [<literal>SSLv3</literal>]
+    [<literal>TLSv1</literal>]
+    [<literal>TLSv1.1</literal>]
+    [<literal>TLSv1.2</literal>]
+    [<literal>TLSv1.3</literal>]</syntax>
+<default>TLSv1.2 TLSv1.3</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Разрешает указанные протоколы для запросов к gRPC SSL-серверу.
+</para>
+
+<para>
+<note>
+Параметр <literal>TLSv1.3</literal> используется по умолчанию
+начиная с 1.23.4.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_server_name">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Разрешает или запрещает передачу имени сервера через
+<link url="http://en.wikipedia.org/wiki/Server_Name_Indication">расширение
+Server Name Indication протокола TLS</link> (SNI, RFC 6066)
+при установлении соединения с gRPC SSL-сервером.
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_session_reuse">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>on</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Определяет, использовать ли повторно SSL-сессии при
+работе с gRPC-сервером.
+Если в логах появляются ошибки
+“<literal>digest check failed</literal>”,
+то можно попробовать выключить
+повторное использование сессий.
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_trusted_certificate">
+<syntax><value>файл</value></syntax>
+<default/>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Задаёт <value>файл</value> с доверенными сертификатами CA в формате PEM,
+используемыми при <link id="grpc_ssl_verify">проверке</link>
+сертификата gRPC SSL-сервера.
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_verify">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Разрешает или запрещает проверку сертификата gRPC SSL-сервера.
+</para>
+
+</directive>
+
+
+<directive name="grpc_ssl_verify_depth">
+<syntax><value>число</value></syntax>
+<default>1</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Устанавливает глубину проверки в цепочке сертификатов
+gRPC SSL-сервера.
+</para>
+
+</directive>
+
+</section>
+
+</module>

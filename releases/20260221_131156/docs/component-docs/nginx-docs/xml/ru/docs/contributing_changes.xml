@@ -1,0 +1,153 @@
+<?xml version="1.0"?>
+
+<!--
+  Copyright (C) Nginx, Inc.
+  -->
+
+<!DOCTYPE article SYSTEM "../../../dtd/article.dtd">
+
+<article name="Внесение изменений"
+         link="/ru/docs/contributing_changes.html"
+         lang="ru"
+         rev="5">
+
+<section id="getting_sources" name="Получение исходного кода">
+
+<para>
+Для хранения исходного кода используется
+<link url="https://github.com">GitHub</link>.
+<link url="https://github.com/nginx/nginx">Репозиторий</link> можно клонировать
+следующей командой:
+<programlisting>
+git clone https://github.com/nginx/nginx.git
+</programlisting>
+</para>
+
+</section>
+
+
+<section id="formatting_changes" name="Оформление изменений">
+
+<para>
+Изменения должны быть оформлены согласно
+<link doc="../docs/dev/development_guide.xml" id="code_style">стилю</link>,
+принятому в nginx.
+В случае возникновения затруднений в оформлении
+изучите, как оформлен исходный код nginx, и следуйте этому стилю в своём коде.
+Изменения скорее будут приняты, если их стиль соответствует окружающему
+коду.
+</para>
+
+<para>
+<link url="https://docs.github.com/ru/pull-requests/committing-changes-to-your-project/creating-and-editing-commits/about-commits">Зафиксируйте</link>
+изменения в вашем ответвлении (fork) проекта.
+Пожалуйста, убедитесь, что адрес
+<link url="https://docs.github.com/ru/get-started/getting-started-with-git/setting-your-username-in-git">электронной
+почты</link> и настоящее имя автора изменения указаны правильно.
+</para>
+
+<para>
+Сообщение фиксации должно содержать однострочное резюме и подробное описание
+после пустой строки.
+Желательно, чтобы первая строка была не длиннее 67 символов,
+остальные строки не длиннее 76 символов.
+Итоговый набор изменений может быть получен с помощью
+команды <literal>git show</literal>:
+<programlisting>
+commit 8597218f386351d6c6cdced24af6716e19a18fc3
+Author: Filipe Da Silva &lt;username@example.com&gt;
+Date:   Thu May 9 10:54:28 2013 +0200
+
+    Mail: removed surplus ngx_close_connection() call.
+
+    It is already called for a peer connection a few lines above.
+
+diff --git a/src/mail/ngx_mail_auth_http_module.c b/src/mail/ngx_mail_auth_http_module.c
+index 2e9b9f24d..8094bbc5c 100644
+--- a/src/mail/ngx_mail_auth_http_module.c
++++ b/src/mail/ngx_mail_auth_http_module.c
+@@ -699,7 +699,6 @@ ngx_mail_auth_http_process_headers(ngx_mail_session_t *s,
+
+                     p = ngx_pnalloc(s->connection->pool, ctx->err.len);
+                     if (p == NULL) {
+-                        ngx_close_connection(ctx->peer.connection);
+                         ngx_destroy_pool(ctx->pool);
+                         ngx_mail_session_internal_server_error(s);
+                         return;
+</programlisting>
+</para>
+
+</section>
+
+
+<section id="before_submitting" name="Перед отправкой">
+
+<para>
+Несколько моментов, на которые следует обратить внимание перед
+отправкой изменения:
+<list type="bullet">
+
+<listitem>
+Предлагаемые изменения должны корректно работать на всех
+<link doc="../index.xml" id="tested_os_and_platforms">поддерживаемых
+платформах</link>.
+</listitem>
+
+<listitem>
+Постарайтесь разъяснить, почему предлагаемое изменение нужно, и, если возможно,
+опишите вариант использования.
+</listitem>
+
+<listitem>
+Проверка изменений при помощи специального набора тестов позволит убедиться,
+что они не вызывают регрессию.
+<link url="https://github.com/nginx/nginx-tests">Репозиторий</link> с тестами
+можно клонировать следующей командой:
+<programlisting>
+git clone https://github.com/nginx/nginx-tests.git
+</programlisting>
+</listitem>
+
+</list>
+</para>
+
+</section>
+
+
+<section id="submitting_changes" name="Отправка изменений">
+
+<para>
+Предлагаемые изменения следует отправлять из вашего ответвления проекта в
+исходный <link url="https://github.com/nginx/nginx">репозиторий</link> как
+<link url="https://docs.github.com/ru/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request-from-a-fork">pull request</link>.
+</para>
+
+</section>
+
+
+<section id="website" name="Веб-сайт">
+
+<para>
+Для хранения исходных файлов этого веб-сайта также используется GitHub.
+<link url="https://www.github.com/nginx/nginx.org">Репозиторий</link>
+можно клонировать следующей командой:
+<programlisting>
+https://github.com/nginx/nginx.org.git
+</programlisting>
+Предлагаемые изменения следует отправлять из вашего ответвления проекта
+как pull request.
+</para>
+
+</section>
+
+
+<section id="license" name="Лицензия">
+
+<para>
+Отправка изменений подразумевает предоставление проекту права на их
+использование под соответствующей <link url="../../LICENSE">лицензией</link>.
+</para>
+
+</section>
+
+</article>

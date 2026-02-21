@@ -1,0 +1,133 @@
+<!--
+  Copyright (C) Igor Sysoev
+  Copyright (C) Nginx, Inc.
+  -->
+
+X:stylesheet {
+
+X:template body (lang) {
+
+    X:variable MENU_ALIGN = {
+        X:if "$lang = 'he'" { X:text {left} } else { X:text {right} }
+    }
+
+    X:variable INDEX_ALIGN = {
+        X:if "$lang = 'he'" { X:text {right} } else { X:text {left} }
+    }
+
+    <body>
+
+    <div id="banner">
+        <div id="banner-content">
+        !! "document(concat($XML, '/banner.xml'))";
+        </div>
+    </div>
+
+    <div id="main">
+    <div id="menu">
+        <input class="side-menu" type="checkbox" id="side-menu"/>
+        <label class="hamb" for="side-menu"><span class="hamb-line"></span></label>
+        <nav class="nav">
+        <h1>
+            X:if "@lang = 'he'" { X:attribute "align" { X:text{left} } }
+            <a href="/">
+                <img src="/img/nginx_logo.svg" alt="NGINX" class="lightimage" style="display: block; height: auto;" />
+                <div class="darkimageWrapper" style="mso-hide: all; display: none">
+                    <img src="/img/nginx_logo_dark.svg" alt="NGINX" class="darkimage" style="display: none;" />
+                </div>
+            </a>
+        </h1>
+        <div>
+        <ul class="mobilemenu">
+            !! "document(concat($XML, '/menu.xml'))
+                        /menus/menu[@lang = $lang]/item";
+        </ul>
+        </div>
+        </nav>
+    </div>
+
+    <div id="content">
+        <h2>
+        !{@name} X:if "$YEAR" { X:text{: } !{$YEAR} }
+        </h2>
+
+        X:if "$ORIGIN and document(concat($XML, '/', $ORIGIN))/*/@rev and
+              (not(@rev) or
+              @rev != document(concat($XML, '/', $ORIGIN))/*/@rev)"
+        {
+            <span>
+
+            X:if "@lang = 'he'" { X:attribute "class" { X:text{ltr} } }
+
+            <blockquote class="note">
+
+            X:if "document(concat($XML, '/i18n.xml'))
+                           /i18n/text[@lang = $lang]/item[@id='outdated']" {
+                !! "document(concat($XML, '/i18n.xml'))
+                             /i18n/text[@lang = $lang]/item[@id='outdated']";
+            } else {
+                !! "document(concat($XML, '/i18n.xml'))
+                             /i18n/text[@lang = 'en']/item[@id='outdated']";
+            }
+
+            </blockquote>
+            </span>
+        }
+
+        X:if "@toc = 'yes' and section[@id and @name]" {
+            <table width="100%"><tr><td align="{$INDEX_ALIGN}">
+            X:for-each "section[@id and @name]" {
+                <a href="#{@id}"> !{@name} </a><br/>
+                X:for-each "section[@id and @name]" {
+                    X:text{&#160;&#160;&#160;&#160;&#160;}
+                    <a href="#{@id}"> !{@name} </a><br/>
+                }
+                X:if "@id = 'directives'" {
+                    X:for-each "directive[@name]" {
+                        X:text{&#160;&#160;&#160;&#160;&#160;}
+                        <a href="#{@name}"> !{@name} </a><br/>
+                    }
+                }
+                X:if "@id = 'endpoints'" {
+                    X:for-each "para/list/tag-name[@name]" {
+                        X:text{&#160;&#160;&#160;&#160;&#160;}
+                        <a href="#{@id}"> !{@name} </a><br/>
+                    }
+                }
+
+            }
+            </td></tr></table>
+        }
+
+        !!;
+
+        X:if "@author or @editor or @translator" {
+            <table width="100%"><tr><td align="right">
+
+            X:if "@author" {
+                !{document(concat($XML, '/i18n.xml'))
+                           /i18n/text[@lang = $lang]/item[@id='author']}
+                X:text { } !{@author} <br/>
+            }
+
+            X:if "@editor" {
+                !{document(concat($XML, '/i18n.xml'))
+                           /i18n/text[@lang = $lang]/item[@id='editor']}
+                X:text { } !{@editor} <br/>
+            }
+
+            X:if "@translator" {
+                !{document(concat($XML, '/i18n.xml'))
+                           /i18n/text[@lang = $lang]/item[@id='translator']}
+                X:text { } !{@translator} <br/>
+            }
+
+            </td></tr></table>
+        }
+    </div>
+    </div>
+    </body>
+
+}
+
+}
