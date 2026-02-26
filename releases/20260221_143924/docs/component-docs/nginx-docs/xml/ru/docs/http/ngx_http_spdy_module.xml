@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+
+<!--
+  Copyright (C) Nginx, Inc.
+  -->
+
+<!DOCTYPE module SYSTEM "../../../../dtd/module.dtd">
+
+<module name="Модуль ngx_http_spdy_module"
+        link="/ru/docs/http/ngx_http_spdy_module.html"
+        lang="ru"
+        rev="11">
+
+<section id="summary">
+
+<para>
+Этот модуль был заменён модулем
+<link doc="ngx_http_v2_module.xml">ngx_http_v2_module</link>
+в версии 1.9.5.
+</para>
+
+</section>
+
+</module>

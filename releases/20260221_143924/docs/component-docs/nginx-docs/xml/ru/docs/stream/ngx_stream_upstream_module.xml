@@ -1,0 +1,726 @@
+<?xml version="1.0"?>
+
+<!--
+  Copyright (C) Nginx, Inc.
+  -->
+
+<!DOCTYPE module SYSTEM "../../../../dtd/module.dtd">
+
+<module name="Модуль ngx_stream_upstream_module"
+        link="/ru/docs/stream/ngx_stream_upstream_module.html"
+        lang="ru"
+        rev="41">
+
+<section id="summary">
+
+<para>
+Модуль <literal>ngx_stream_upstream_module</literal> (1.9.0)
+позволяет описывать группы серверов,
+которые могут использоваться в директиве
+<link doc="ngx_stream_proxy_module.xml" id="proxy_pass"/>.
+</para>
+
+</section>
+
+
+<section id="example" name="Пример конфигурации">
+
+<para>
+<example>
+upstream <emphasis>backend</emphasis> {
+    hash $remote_addr consistent;
+
+    server backend1.example.com:12345  weight=5;
+    server backend2.example.com:12345;
+    server unix:/tmp/backend3;
+
+    server backup1.example.com:12345   backup;
+    server backup2.example.com:12345   backup;
+}
+
+server {
+    listen 12346;
+    proxy_pass <emphasis>backend</emphasis>;
+}
+</example>
+</para>
+
+<para>
+Динамически настраиваемая группа
+с периодическими
+<link doc="ngx_stream_upstream_hc_module.xml">проверками работоспособности</link>
+доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>:
+<example>
+resolver 10.0.0.1;
+
+upstream <emphasis>dynamic</emphasis> {
+    zone upstream_dynamic 64k;
+
+    server backend1.example.com:12345 weight=5;
+    server backend2.example.com:12345 fail_timeout=5s slow_start=30s;
+    server 192.0.2.1:12345            max_fails=3;
+    server backend3.example.com:12345 resolve;
+    server backend4.example.com       service=http resolve;
+
+    server backup1.example.com:12345  backup;
+    server backup2.example.com:12345  backup;
+}
+
+server {
+    listen 12346;
+    proxy_pass <emphasis>dynamic</emphasis>;
+    health_check;
+}
+</example>
+</para>
+
+</section>
+
+
+<section id="directives" name="Директивы">
+
+<directive name="upstream">
+<syntax block="yes"><value>название</value></syntax>
+<default/>
+<context>stream</context>
+
+<para>
+Описывает группу серверов.
+Серверы могут слушать на разных портах.
+Кроме того, можно одновременно использовать серверы,
+слушающие на TCP- и UNIX-сокетах.
+</para>
+
+<para>
+Пример:
+<example>
+upstream backend {
+    server backend1.example.com:12345 weight=5;
+    server 127.0.0.1:12345            max_fails=3 fail_timeout=30s;
+    server unix:/tmp/backend2;
+    server backend3.example.com:12345 resolve;
+
+    server backup1.example.com:12345  backup;
+}
+</example>
+</para>
+
+<para>
+По умолчанию соединения распределяются по серверам циклически
+(в режиме round-robin) с учётом весов серверов.
+В вышеприведённом примере каждые 7 соединений будут распределены так:
+5 соединений на <literal>backend1.example.com:12345</literal>
+и по одному соединению на второй и третий серверы.
+Если при попытке работы с сервером происходит ошибка, то соединение
+передаётся следующему серверу, и так далее до тех пор, пока не будут опробованы
+все работающие серверы.
+Если связь с серверами не удалась, соединение будет закрыто.
+</para>
+
+</directive>
+
+
+<directive name="server">
+<syntax><value>адрес</value> [<value>параметры</value>]</syntax>
+<default/>
+<context>upstream</context>
+
+<para>
+Задаёт <value>адрес</value> и другие <value>параметры</value>
+сервера.
+Адрес может быть указан в виде доменного имени или IP-адреса,
+и обязательного порта, или в виде пути UNIX-сокета, который
+указывается после префикса “<literal>unix:</literal>”.
+Доменное имя, которому соответствует несколько IP-адресов,
+задаёт сразу несколько серверов.
+</para>
+
+<para>
+Могут быть заданы следующие параметры:
+<list type="tag">
+
+<tag-name id="weight">
+<literal>weight</literal>=<value>число</value>
+</tag-name>
+<tag-desc>
+задаёт вес сервера, по умолчанию 1.
+</tag-desc>
+
+<tag-name id="max_conns">
+<literal>max_conns</literal>=<value>число</value>
+</tag-name>
+<tag-desc>
+ограничивает максимальное <value>число</value> одновременных
+соединений к проксируемому серверу (1.11.5).
+Значение по умолчанию равно 0 и означает, что ограничения нет.
+Если группа не находится в <link id="zone">зоне разделяемой памяти</link>,
+то ограничение работает отдельно для каждого рабочего процесса.
+<note>
+До версии 1.11.5 этот параметр был доступен как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</tag-desc>
+
+<tag-name id="max_fails">
+<literal>max_fails</literal>=<value>число</value>
+</tag-name>
+<tag-desc>
+задаёт число неудачных попыток работы с сервером, которые должны произойти
+в течение времени, заданного параметром <literal>fail_timeout</literal>,
+чтобы сервер считался недоступным на период времени, также заданный
+параметром <literal>fail_timeout</literal>.
+По умолчанию число попыток устанавливается равным 1.
+Нулевое значение отключает учёт попыток.
+В данном случае неудачной попыткой считается ошибка или таймаут
+при установке соединения с сервером.
+</tag-desc>
+
+<tag-name id="fail_timeout">
+<literal>fail_timeout</literal>=<value>время</value>
+</tag-name>
+<tag-desc>
+задаёт
+<list type="bullet">
+
+<listitem>
+время, в течение которого должно произойти заданное число неудачных
+попыток работы с сервером для того, чтобы сервер считался недоступным;
+</listitem>
+
+<listitem>
+и время, в течение которого сервер будет считаться недоступным.
+</listitem>
+
+</list>
+По умолчанию параметр равен 10 секундам.
+</tag-desc>
+
+<tag-name id="backup">
+<literal>backup</literal>
+</tag-name>
+<tag-desc>
+помечает сервер как запасной сервер.
+На него будут передаваться соединения в случае,
+если не работают основные серверы.
+<note>
+Параметр нельзя использовать совместно с
+методами балансировки нагрузки <link id="hash"/> и <link id="random"/>.
+</note>
+</tag-desc>
+
+<tag-name id="down">
+<literal>down</literal>
+</tag-name>
+<tag-desc>
+помечает сервер как постоянно недоступный.
+</tag-desc>
+
+<tag-name id="resolve">
+<literal>resolve</literal>
+</tag-name>
+<tag-desc>
+отслеживает изменения IP-адресов, соответствующих доменному имени сервера,
+и автоматически изменяет конфигурацию группы
+без необходимости перезапуска nginx.
+Группа должна находиться в <link id="zone">зоне разделяемой памяти</link>.
+<para>
+Для работы этого параметра
+директива <literal>resolver</literal>
+должна быть задана в блоке
+<link doc="ngx_stream_core_module.xml" id="resolver">stream</link>
+или в соответствующем блоке <link id="resolver">upstream</link>.
+</para>
+
+<para>
+<note>
+До версии 1.27.3 этот параметр был доступен только как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+</tag-desc>
+
+<tag-name id="service">
+<literal>service</literal>=<value>имя</value>
+</tag-name>
+<tag-desc>
+включает преобразование
+<link url="https://datatracker.ietf.org/doc/html/rfc2782">SRV</link>-записей
+DNS и задаёт <value>имя</value> сервиса (1.9.13).
+Для работы параметра необходимо указать
+параметр <link id="resolve"/> для сервера
+и не указывать порт сервера.
+<para>
+Если имя сервиса не содержит точку (“<literal>.</literal>”), то
+имя составляется в соответствии с
+<link url="https://datatracker.ietf.org/doc/html/rfc2782">RFC</link>
+и в префикс службы добавляется протокол TCP.
+Например, для получения
+SRV-записи <literal>_http._tcp.backend.example.com</literal>
+необходимо указать директиву:
+<example>
+server backend.example.com service=http resolve;
+</example>
+Если имя сервиса содержит одну и более точек, то имя составляется
+при помощи соединения префикса службы и имени сервера.
+Например, для получения SRV-записей
+<literal>_http._tcp.backend.example.com</literal>
+и <literal>server1.backend.example.com</literal>
+необходимо указать директивы:
+<example>
+server backend.example.com service=_http._tcp resolve;
+server example.com service=server1.backend resolve;
+</example>
+</para>
+
+<para>
+SRV-записи с наивысшим приоритетом
+(записи с одинаковым наименьшим значением приоритета)
+преобразуются в основные серверы,
+остальные SRV-записи преобразуются в запасные серверы.
+Если в конфигурации сервера указан параметр <link id="backup"/>,
+высокоприоритетные SRV-записи преобразуются в запасные серверы,
+остальные SRV-записи игнорируются.
+</para>
+
+<para>
+<note>
+До версии 1.27.3 этот параметр был доступен только как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+</tag-desc>
+
+</list>
+</para>
+
+<para>
+Кроме того,
+следующие параметры доступны как часть
+<commercial_version>коммерческой подписки</commercial_version>:
+<list type="tag">
+
+<tag-name id="slow_start">
+<literal>slow_start</literal>=<value>время</value>
+</tag-name>
+<tag-desc>
+задаёт <value>время</value>, в течение которого вес сервера
+восстановится от нуля до своего номинального значения в ситуации, когда
+неработоспособный (unhealthy) сервер вновь становится работоспособным
+(<link doc="ngx_stream_upstream_hc_module.xml" id="health_check">healthy</link>)
+или когда сервер становится доступным по прошествии времени,
+в течение которого он считался <link id="fail_timeout">недоступным</link>.
+Значение по умолчанию равно нулю и означает, что медленный старт выключен.
+<note>
+Параметр нельзя использовать совместно с
+методами балансировки нагрузки <link id="hash"/> и <link id="random"/>.
+</note>
+</tag-desc>
+
+</list>
+</para>
+
+<para>
+<note>
+Если в группе только один сервер, параметры <literal>max_fails</literal>,
+<literal>fail_timeout</literal> и <literal>slow_start</literal>
+игнорируются и такой сервер никогда не будет считаться недоступным.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="zone">
+<syntax><value>имя</value> [<value>размер</value>]</syntax>
+<default/>
+<context>upstream</context>
+
+<para>
+Задаёт <value>имя</value> и <value>размер</value> зоны разделяемой памяти,
+в которой хранятся конфигурация группы и её рабочее состояние,
+разделяемые между рабочими процессами.
+В одной и той же зоне могут быть сразу несколько групп.
+В этом случае достаточно указать <value>размер</value> только один раз.
+</para>
+
+<para>
+Дополнительно, как часть
+<commercial_version>коммерческой подписки</commercial_version>,
+в таких группах для изменения состава группы
+или настроек отдельных серверов
+нет необходимости перезапускать nginx.
+Конфигурация доступна через
+модуль <link doc="../http/ngx_http_api_module.xml">API</link> (1.13.3).
+<note>
+До версии 1.13.3
+конфигурация была доступна только через специальный location,
+в котором указана директива
+<link doc="../http/ngx_http_upstream_conf_module.xml" id="upstream_conf"/>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="state">
+<syntax><value>файл</value></syntax>
+<default/>
+<context>upstream</context>
+<appeared-in>1.9.7</appeared-in>
+
+<para>
+Задаёт <value>файл</value>, в котором хранится состояние
+динамически настраиваемой группы.
+</para>
+
+<para>
+Примеры:
+<example>
+state /var/lib/nginx/state/servers.conf; # путь для Linux
+state /var/db/nginx/state/servers.conf;  # путь для FreeBSD
+</example>
+</para>
+
+<para>
+В данный момент состояние ограничено списком серверов с их параметрами.
+Файл читается при парсинге конфигурации и обновляется каждый раз при
+<link doc="../http/ngx_http_api_module.xml" id="stream_upstreams_stream_upstream_name_servers_">изменении</link>
+конфигурации группы.
+Изменение содержимого файла напрямую не рекомендуется.
+Директиву нельзя использовать
+совместно с директивой <link id="server"/>.
+</para>
+
+<para>
+<note>
+Изменения, совершённые в момент
+<link doc="../control.xml" id="reconfiguration">перезагрузки конфигурации</link>
+или <link doc="../control.xml" id="upgrade">обновления бинарного файла</link>,
+могут быть потеряны.
+</note>
+</para>
+
+<para>
+<note>
+Эта директива доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="hash">
+<syntax><value>ключ</value> [<literal>consistent</literal>]</syntax>
+<default/>
+<context>upstream</context>
+
+<para>
+Задаёт метод балансировки нагрузки для группы, при котором
+соответствие клиента серверу определяется при помощи
+хэшированного значения <value>ключа</value>.
+В качестве <value>ключа</value> может использоваться текст, переменные
+и их комбинации (1.11.2).
+Пример использования:
+<example>
+hash $remote_addr;
+</example>
+Следует отметить, что любое добавление или удаление серверов в группе
+может привести к перераспределению большинства ключей на другие серверы.
+Метод совместим с библиотекой Perl
+<link url="https://metacpan.org/pod/Cache::Memcached">Cache::Memcached</link>.
+</para>
+
+<para>
+Если задан параметр <literal>consistent</literal>, то вместо
+вышеописанного метода будет использоваться метод консистентного хэширования
+<link url="https://www.metabrew.com/article/libketama-consistent-hashing-algo-memcached-clients">ketama</link>.
+Метод гарантирует, что при добавлении сервера в группу или его удалении
+на другие серверы будет перераспределено минимальное число ключей.
+Применение метода для кэширующих серверов обеспечивает
+больший процент попаданий в кэш.
+Метод совместим с библиотекой Perl
+<link url="https://metacpan.org/pod/Cache::Memcached::Fast">Cache::Memcached::Fast</link>
+при значении параметра <value>ketama_points</value> равным 160.
+</para>
+
+</directive>
+
+
+<directive name="least_conn">
+<syntax/>
+<default/>
+<context>upstream</context>
+
+<para>
+Задаёт для группы метод балансировки нагрузки, при котором соединение
+передаётся серверу с наименьшим числом активных соединений,
+с учётом весов серверов.
+Если подходит сразу несколько серверов, они выбираются циклически
+(в режиме round-robin) с учётом их весов.
+</para>
+
+</directive>
+
+
+<directive name="least_time">
+<syntax>
+    <literal>connect</literal> |
+    <literal>first_byte</literal> |
+    <literal>last_byte</literal>
+    [<literal>inflight</literal>]</syntax>
+<default/>
+<context>upstream</context>
+
+<para>
+Задаёт для группы метод балансировки нагрузки, при котором соединение
+передаётся серверу с наименьшими средним временем ответа и
+числом активных соединений с учётом весов серверов.
+Если подходит сразу несколько серверов, то они выбираются циклически
+(в режиме round-robin) с учётом их весов.
+</para>
+
+<para>
+Если указан параметр <literal>connect</literal>,
+то учитывается время
+<link id="var_upstream_connect_time">соединения</link> с сервером группы.
+Если указан параметр <literal>first_byte</literal>,
+то учитывается время получения
+<link id="var_upstream_first_byte_time">первого байта</link> данных.
+Если указан параметр <literal>last_byte</literal>,
+то учитывается время получения
+<link id="var_upstream_session_time">последнего байта</link> данных.
+Если указан параметр <literal>inflight</literal> (1.11.6),
+то также учитываются незавершённые соединения.
+<note>
+До версии 1.11.6
+незавершённые соединения учитывались по умолчанию.
+</note>
+</para>
+
+<para>
+<note>
+Эта директива доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="random">
+<syntax>[<literal>two</literal> [<value>метод</value>]]</syntax>
+<default/>
+<context>upstream</context>
+<appeared-in>1.15.1</appeared-in>
+
+<para>
+Задаёт для группы метод балансировки нагрузки, при котором соединение
+передаётся случайно выбранному серверу, с учётом весов
+серверов.
+</para>
+
+<para>
+Если указан необязательный параметр <literal>two</literal>,
+то nginx случайным образом выбирает
+<link url="https://homes.cs.washington.edu/~karlin/papers/balls.pdf">два</link>
+сервера, из которых выбирает сервер,
+используя указанный <literal>метод</literal>.
+Методом по умолчанию является <literal>least_conn</literal>,
+при котором соединение передаётся на сервер
+с наименьшим количеством активных соединений.
+</para>
+
+<para id="random_least_time">
+Если указан метод <literal>least_time</literal>, то соединение передаётся
+серверу
+с наименьшими средним временем ответа и числом активных соединений.
+Если указан <literal>least_time=connect</literal>,
+то учитывается время
+<link id="var_upstream_connect_time">соединения</link> с сервером группы.
+Если указан <literal>least_time=first_byte</literal>,
+то учитывается время получения
+<link id="var_upstream_first_byte_time">первого байта</link> данных.
+Если указан <literal>least_time=last_byte</literal>,
+то учитывается время получения
+<link id="var_upstream_session_time">последнего байта</link> данных.
+<note>
+Метод <literal>least_time</literal> доступен как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="resolver">
+<syntax>
+    <value>адрес</value> ...
+    [<literal>valid</literal>=<value>время</value>]
+    [<literal>ipv4</literal>=<literal>on</literal>|<literal>off</literal>]
+    [<literal>ipv6</literal>=<literal>on</literal>|<literal>off</literal>]
+    [<literal>status_zone</literal>=<value>зона</value>]</syntax>
+<default/>
+<context>upstream</context>
+<appeared-in>1.27.3</appeared-in>
+
+<para>
+Задаёт серверы DNS, используемые для преобразования имён вышестоящих серверов
+в адреса, например:
+<example>
+resolver 127.0.0.1 [::1]:5353;
+</example>
+Адрес может быть указан в виде доменного имени или IP-адреса,
+и необязательного порта.
+Если порт не указан, используется порт 53.
+Серверы DNS опрашиваются циклически.
+</para>
+
+<para id="resolver_ipv6">
+По умолчанию nginx будет искать как IPv4-, так и IPv6-адреса
+при преобразовании имён в адреса.
+Если поиск IPv4- или IPv6-адресов нежелателен,
+можно указать параметр <literal>ipv4=off</literal> (1.23.1) или
+<literal>ipv6=off</literal>.
+</para>
+
+<para id="resolver_valid">
+По умолчанию nginx кэширует ответы, используя значение TTL из ответа.
+Необязательный параметр <literal>valid</literal> позволяет это
+переопределить:
+<example>
+resolver 127.0.0.1 [::1]:5353 valid=30s;
+</example>
+<note>
+Для предотвращения DNS-спуфинга рекомендуется
+использовать DNS-серверы в защищённой доверенной локальной сети.
+</note>
+</para>
+
+<para id="resolver_status_zone">
+Необязательный параметр <literal>status_zone</literal> (1.17.5)
+включает
+<link doc="../http/ngx_http_api_module.xml" id="resolvers_">сбор информации</link>
+о запросах и ответах сервера DNS
+в указанной <value>зоне</value>.
+Параметр доступен как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</para>
+
+<para>
+<note>
+Начиная с версии 1.17.5 и до версии 1.27.3
+эта директива была доступна только как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="resolver_timeout">
+<syntax><value>время</value></syntax>
+<default>30s</default>
+<context>upstream</context>
+<appeared-in>1.27.3</appeared-in>
+
+<para>
+Задаёт таймаут для преобразования имени в адрес, например:
+<example>
+resolver_timeout 5s;
+</example>
+</para>
+
+<para>
+<note>
+Начиная с версии 1.17.5 и до версии 1.27.3
+эта директива была доступна только как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+</section>
+
+
+<section id="variables" name="Встроенные переменные">
+
+<para>
+Модуль <literal>ngx_stream_upstream_module</literal>
+поддерживает следующие встроенные переменные:
+<list type="tag">
+
+<tag-name id="var_upstream_addr"><var>$upstream_addr</var></tag-name>
+<tag-desc>
+хранит IP-адрес и порт или путь к UNIX-сокету сервера группы (1.11.4).
+Если при проксировании были сделаны обращения к нескольким серверам,
+то их адреса разделяются запятой, например
+“<literal>192.168.1.1:12345, 192.168.1.2:12345, unix:/tmp/sock</literal>”.
+Если сервер не может быть выбран,
+то переменная хранит имя группы серверов.
+</tag-desc>
+
+<tag-name id="var_upstream_bytes_received"><var>$upstream_bytes_received</var></tag-name>
+<tag-desc>
+число байт, полученных от сервера группы (1.11.4).
+Значения нескольких соединений
+разделяются запятыми подобно адресам в переменной
+<link id="var_upstream_addr">$upstream_addr</link>.
+</tag-desc>
+
+<tag-name id="var_upstream_bytes_sent"><var>$upstream_bytes_sent</var></tag-name>
+<tag-desc>
+число байт, переданных на сервер группы (1.11.4).
+Значения нескольких соединений
+разделяются запятыми подобно адресам в переменной
+<link id="var_upstream_addr">$upstream_addr</link>.
+</tag-desc>
+
+<tag-name id="var_upstream_connect_time"><var>$upstream_connect_time</var></tag-name>
+<tag-desc>
+время установки соединения с сервером группы (1.11.4);
+время хранится в секундах с точностью до миллисекунд.
+Времена нескольких соединений
+разделяются запятыми подобно адресам в переменной
+<link id="var_upstream_addr">$upstream_addr</link>.
+</tag-desc>
+
+<tag-name id="var_upstream_first_byte_time"><var>$upstream_first_byte_time</var></tag-name>
+<tag-desc>
+время получения первого байта данных (1.11.4);
+время хранится в секундах с точностью до миллисекунд.
+Времена нескольких соединений
+разделяются запятыми подобно адресам в переменной
+<link id="var_upstream_addr">$upstream_addr</link>.
+</tag-desc>
+
+<tag-name id="var_upstream_last_addr"><var>$upstream_last_addr</var></tag-name>
+<tag-desc>
+хранит IP-адрес или путь к UNIX-сокету
+последнего выбранного сервера группы (1.29.3).
+
+<para>
+<note>
+Эта переменная доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</tag-desc>
+
+<tag-name id="var_upstream_session_time"><var>$upstream_session_time</var></tag-name>
+<tag-desc>
+длительность сессии в секундах с точностью до миллисекунд (1.11.4).
+Времена нескольких соединений
+разделяются запятыми подобно адресам в переменной
+<link id="var_upstream_addr">$upstream_addr</link>.
+</tag-desc>
+
+</list>
+</para>
+
+</section>
+
+</module>

@@ -1,0 +1,400 @@
+<?xml version="1.0"?>
+
+<!--
+  Copyright (C) Nginx, Inc.
+  -->
+
+<!DOCTYPE module SYSTEM "../../../../dtd/module.dtd">
+
+<module name="Модуль ngx_http_v2_module"
+        link="/ru/docs/http/ngx_http_v2_module.html"
+        lang="ru"
+        rev="19">
+
+<section id="summary">
+
+<para>
+Модуль <literal>ngx_http_v2_module</literal> (1.9.5) обеспечивает
+поддержку
+<link url="https://datatracker.ietf.org/doc/html/rfc7540">HTTP/2</link>.
+</para>
+
+<para>
+По умолчанию этот модуль не собирается, его сборку необходимо разрешить
+с помощью конфигурационного параметра
+<literal>--with-http_v2_module</literal>.
+</para>
+
+</section>
+
+
+<section id="issues" name="Известные проблемы">
+
+<para>
+До версии 1.9.14
+буферизация тела запроса клиента не могла быть запрещена
+независимо от
+значения директив
+<link doc="ngx_http_proxy_module.xml" id="proxy_request_buffering"/>,
+<link doc="ngx_http_fastcgi_module.xml" id="fastcgi_request_buffering"/>,
+<link doc="ngx_http_uwsgi_module.xml" id="uwsgi_request_buffering"/> и
+<link doc="ngx_http_scgi_module.xml" id="scgi_request_buffering"/>.
+</para>
+
+<para>
+До версии 1.19.1
+механизм <link doc="ngx_http_core_module.xml" id="lingering_close"/>
+не использовался в управлении закрытием HTTP/2-соединений.
+</para>
+
+</section>
+
+
+<section id="example" name="Пример конфигурации">
+
+<para>
+<example>
+server {
+    listen 443 ssl;
+
+    http2 on;
+
+    ssl_certificate server.crt;
+    ssl_certificate_key server.key;
+}
+</example>
+Чтобы принимать HTTP/2-соединения по TLS, необходимо
+наличие поддержки расширения “Application-Layer Protocol Negotiation” (ALPN)
+протокола TLS, появившейся в
+<link url="http://www.openssl.org">OpenSSL</link> версии 1.0.2.
+</para>
+
+<para>
+Если
+директива <link doc="ngx_http_ssl_module.xml" id="ssl_prefer_server_ciphers"/>
+установлена в значение “<literal>on</literal>”,
+<link doc="ngx_http_ssl_module.xml" id="ssl_ciphers">шифры</link>
+должны быть настроены таким образом, чтобы соответствовать чёрному списку
+<link url="https://datatracker.ietf.org/doc/html/rfc9113#appendix-A">RFC 9113, Appendix A</link>,
+а также поддерживаться клиентами.
+</para>
+
+</section>
+
+
+<section id="directives" name="Директивы">
+
+<directive name="http2">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>http</context>
+<context>server</context>
+<appeared-in>1.25.1</appeared-in>
+
+<para>
+Разрешает
+протокол
+<link url="https://datatracker.ietf.org/doc/html/rfc9113">HTTP/2</link>.
+</para>
+
+</directive>
+
+
+<directive name="http2_body_preread_size">
+<syntax><value>размер</value></syntax>
+<default>64k</default>
+<context>http</context>
+<context>server</context>
+<appeared-in>1.11.0</appeared-in>
+
+<para>
+Задаёт <value>размер</value> буфера для каждого запроса,
+в который может сохраняться тело запроса
+до того, как оно начнёт обрабатываться.
+</para>
+
+</directive>
+
+
+<directive name="http2_chunk_size">
+<syntax><value>размер</value></syntax>
+<default>8k</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+
+<para>
+Задаёт максимальный размер частей,
+на которое будет разделяться тело ответа.
+Слишком маленькое значение может привести к росту накладных расходов.
+Слишком большое значение может негативно сказаться на приоритизации из-за
+<link url="http://en.wikipedia.org/wiki/Head-of-line_blocking">
+блокировки очереди</link>.
+</para>
+
+</directive>
+
+
+<directive name="http2_idle_timeout">
+<syntax><value>время</value></syntax>
+<default>3m</default>
+<context>http</context>
+<context>server</context>
+
+<para>
+<note>
+Эта директива устарела начиная с версии 1.19.7.
+Вместо неё следует использовать директиву
+<link doc="ngx_http_core_module.xml" id="keepalive_timeout"/>.
+</note>
+</para>
+
+<para>
+Задаёт таймаут неактивности, после которого соединение закрывается.
+</para>
+
+</directive>
+
+
+<directive name="http2_max_concurrent_pushes">
+<syntax><value>число</value></syntax>
+<default>10</default>
+<context>http</context>
+<context>server</context>
+<appeared-in>1.13.9</appeared-in>
+
+<para>
+<note>
+Эта директива устарела начиная с версии 1.25.1.
+</note>
+</para>
+
+<para>
+Ограничивает максимальное число параллельных
+<link id="http2_push">push</link>-запросов в соединении.
+</para>
+
+</directive>
+
+
+<directive name="http2_max_concurrent_streams">
+<syntax><value>число</value></syntax>
+<default>128</default>
+<context>http</context>
+<context>server</context>
+
+<para>
+Задаёт максимальное число параллельных HTTP/2-потоков
+в соединении.
+</para>
+
+</directive>
+
+
+<directive name="http2_max_field_size">
+<syntax><value>размер</value></syntax>
+<default>4k</default>
+<context>http</context>
+<context>server</context>
+
+<para>
+<note>
+Эта директива устарела начиная с версии 1.19.7.
+Вместо неё следует использовать директиву
+<link doc="ngx_http_core_module.xml" id="large_client_header_buffers"/>.
+</note>
+</para>
+
+<para>
+Ограничивает максимальный размер
+заголовка запроса, сжатого при помощи
+<link url="https://datatracker.ietf.org/doc/html/rfc7541">HPACK</link>.
+Ограничение применяется в равной степени как к имени, так и к значению.
+Если применяется кодирование Хаффмана,
+то фактический размер распакованных строк имени и значения может быть больше.
+Ограничение по умолчанию подходит для большинства запросов.
+</para>
+
+</directive>
+
+
+<directive name="http2_max_header_size">
+<syntax><value>размер</value></syntax>
+<default>16k</default>
+<context>http</context>
+<context>server</context>
+
+<para>
+<note>
+Эта директива устарела начиная с версии 1.19.7.
+Вместо неё следует использовать директиву
+<link doc="ngx_http_core_module.xml" id="large_client_header_buffers"/>.
+</note>
+</para>
+
+<para>
+Ограничивает максимальный размер всего списка заголовков запроса после
+распаковки <link url="https://datatracker.ietf.org/doc/html/rfc7541">HPACK</link>.
+Ограничение по умолчанию подходит для большинства запросов.
+</para>
+
+</directive>
+
+
+<directive name="http2_max_requests">
+<syntax><value>число</value></syntax>
+<default>1000</default>
+<context>http</context>
+<context>server</context>
+<appeared-in>1.11.6</appeared-in>
+
+<para>
+<note>
+Эта директива устарела начиная с версии 1.19.7.
+Вместо неё следует использовать директиву
+<link doc="ngx_http_core_module.xml" id="keepalive_requests"/>.
+</note>
+</para>
+
+<para>
+Задаёт максимальное число запросов (включая
+<link id="http2_push">push</link>-запросы), которые можно
+сделать по одному соединению HTTP/2,
+после чего очередной клиентский запрос приведёт к закрытию соединения
+и необходимости установить новое соединение.
+</para>
+
+<para>
+Периодическое закрытие соединений необходимо для освобождения
+памяти, выделенной под конкретные соединения.
+Поэтому использование слишком большого максимального числа запросов
+может приводить к чрезмерному потреблению памяти и не рекомендуется.
+</para>
+
+</directive>
+
+
+<directive name="http2_push">
+<syntax><value>uri</value> | <literal>off</literal></syntax>
+<default>off</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+<appeared-in>1.13.9</appeared-in>
+
+<para>
+<note>
+Эта директива устарела начиная с версии 1.25.1.
+Вместо неё можно использовать директиву
+<link doc="ngx_http_core_module.xml" id="early_hints"/>.
+</note>
+</para>
+
+<para>
+Заблаговременно отправляет
+(<link url="https://datatracker.ietf.org/doc/html/rfc9113#section-8.4">push</link>) запрос
+к заданному <value>uri</value>
+вместе с ответом на оригинальный запрос.
+Будут обработаны только относительные URI с абсолютными путями,
+например:
+<example>
+http2_push /static/css/main.css;
+</example>
+В значении <value>uri</value> допустимо использование переменных.
+</para>
+
+<para>
+На одном уровне конфигурации можно указать несколько
+<literal>http2_push</literal> директив.
+Параметр <literal>off</literal> отменяет действие
+унаследованных с предыдущего уровня конфигурации
+директив <literal>http2_push</literal>.
+</para>
+
+</directive>
+
+
+<directive name="http2_push_preload">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>http</context>
+<context>server</context>
+<context>location</context>
+<appeared-in>1.13.9</appeared-in>
+
+<para>
+<note>
+Эта директива устарела начиная с версии 1.25.1.
+</note>
+</para>
+
+<para>
+Разрешает автоматическое преобразование
+<link url="https://www.w3.org/TR/preload/#server-push-http-2">preload
+links</link>,
+указанных в полях <header>Link</header> заголовка ответа, в
+<link url="https://datatracker.ietf.org/doc/html/rfc9113#section-8.4">push</link>-запросы.
+</para>
+
+</directive>
+
+
+<directive name="http2_recv_buffer_size">
+<syntax><value>размер</value></syntax>
+<default>256k</default>
+<context>http</context>
+
+<para>
+Задаёт размер входного буфера для
+<link doc="../ngx_core_module.xml" id="worker_processes">рабочего
+процесса</link>.
+</para>
+
+</directive>
+
+
+<directive name="http2_recv_timeout">
+<syntax><value>время</value></syntax>
+<default>30s</default>
+<context>http</context>
+<context>server</context>
+
+<para>
+<note>
+Эта директива устарела начиная с версии 1.19.7.
+Вместо неё следует использовать директиву
+<link doc="ngx_http_core_module.xml" id="client_header_timeout"/>.
+</note>
+</para>
+
+<para>
+Задаёт таймаут в случае, когда от клиента ожидаются ещё данные,
+после которого соединение закрывается.
+</para>
+
+</directive>
+
+</section>
+
+
+<section id="variables" name="Встроенные переменные">
+
+<para>
+Модуль <literal>ngx_http_v2_module</literal>
+поддерживает следующие встроенные переменные:
+<list type="tag" compact="no">
+
+<tag-name id="var_http2"><var>$http2</var></tag-name>
+<tag-desc>
+согласованный идентификатор протокола:
+“<literal>h2</literal>” для HTTP/2 через TLS,
+“<literal>h2c</literal>” для HTTP/2 через незашифрованный TCP,
+либо пустая строка.
+</tag-desc>
+
+</list>
+</para>
+
+</section>
+
+</module>

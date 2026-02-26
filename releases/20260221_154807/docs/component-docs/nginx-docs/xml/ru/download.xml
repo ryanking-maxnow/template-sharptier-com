@@ -1,0 +1,64 @@
+<!--
+  Copyright (C) Igor Sysoev
+  Copyright (C) Nginx, Inc.
+  -->
+
+<!DOCTYPE article SYSTEM "../../dtd/article.dtd">
+
+<article name="nginx: скачать"
+         link="/ru/download.html"
+         lang="ru"
+         rev="5">
+
+
+<section name="Основная версия">
+
+<download last="1" tag="mainline" />
+
+</section>
+
+
+<section name="Стабильная версия">
+
+<download last="1" tag="stable" />
+
+</section>
+
+
+<section name="Устаревшие версии">
+
+<download last="1" tag="legacy" />
+
+</section>
+
+
+<section name="Исходный код">
+
+<para>
+Репозитории GitHub:
+<list type="bullet">
+
+<listitem>
+код: <literal>https://github.com/nginx/nginx</literal>
+</listitem>
+
+<listitem>
+сайт: <literal>https://github.com/nginx/nginx.org</literal>
+</listitem>
+
+</list>
+</para>
+
+</section>
+
+
+<section name="Готовые пакеты">
+
+<para>
+Пакеты для Linux
+<link doc="linux_packages.xml">стабильной и основной</link> версий.
+</para>
+
+</section>
+
+</article>

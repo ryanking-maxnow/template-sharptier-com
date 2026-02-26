@@ -1,0 +1,27 @@
+<!--
+  Copyright (C) Igor Sysoev
+  Copyright (C) Nginx, Inc.
+  -->
+
+X:stylesheet {
+
+X:template style (lang) {
+
+    <meta name="viewport" content="width=device-width,initial-scale=1"></meta>
+
+    <link>
+    X:attribute "rel" {
+      X:text{stylesheet}
+    }
+    X:attribute "href" {
+      X:if "substring-after($DIRNAME, '/') or $LINK = '404.html'" {
+          !{ concat($ROOT, '/') }
+      }
+      !{ concat('css/style_', $lang, '.css') }
+    }
+    !!;
+    </link>
+
+}
+
+}

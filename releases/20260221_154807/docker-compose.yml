@@ -1,0 +1,33 @@
+version: '3'
+
+services:
+  payload:
+    image: node:24-bookworm
+    ports:
+      - '3000:3000'
+    volumes:
+      - .:/home/node/app
+      - node_modules:/home/node/app/node_modules
+    working_dir: /home/node/app/
+    command: bash -lc "corepack enable pnpm && pnpm install && pnpm dev"
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+
+  postgres:
+    image: postgres:18
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: templatecms_user
+      POSTGRES_PASSWORD: CHANGE_ME
+      POSTGRES_DB: template_sharptier_cms
+    volumes:
+      - data:/var/lib/postgresql/data
+    logging:
+      driver: none
+
+volumes:
+  data:
+  node_modules:

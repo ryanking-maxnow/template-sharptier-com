@@ -1,0 +1,818 @@
+<?xml version="1.0"?>
+
+<!--
+  Copyright (C) Nginx, Inc.
+  -->
+
+<!DOCTYPE module SYSTEM "../../../../dtd/module.dtd">
+
+<module name="Модуль ngx_stream_proxy_module"
+        link="/ru/docs/stream/ngx_stream_proxy_module.html"
+        lang="ru"
+        rev="37">
+
+<section id="summary">
+
+<para>
+Модуль <literal>ngx_stream_proxy_module</literal> (1.9.0) позволяет проксировать
+потоки данных по TCP, UDP (1.9.13) и UNIX-сокетам.
+</para>
+
+</section>
+
+
+<section id="example" name="Пример конфигурации">
+
+<para>
+<example>
+server {
+    listen 127.0.0.1:12345;
+    proxy_pass 127.0.0.1:8080;
+}
+
+server {
+    listen 12345;
+    proxy_connect_timeout 1s;
+    proxy_timeout 1m;
+    proxy_pass example.com:12345;
+}
+
+server {
+    listen 53 udp reuseport;
+    proxy_timeout 20s;
+    proxy_pass dns.example.com:53;
+}
+
+server {
+    listen [::1]:12345;
+    proxy_pass unix:/tmp/stream.socket;
+}
+</example>
+</para>
+
+</section>
+
+
+<section id="directives" name="Директивы">
+
+<directive name="proxy_bind">
+<syntax>
+    <value>address</value>
+    [<literal>transparent</literal>] |
+    <literal>off</literal></syntax>
+<default/>
+<context>stream</context>
+<context>server</context>
+<appeared-in>1.9.2</appeared-in>
+
+<para>
+Задаёт локальный IP-<value>адрес</value>, который будет использоваться в
+исходящих соединениях с проксируемым сервером.
+В значении параметра допустимо использование переменных (1.11.2).
+Специальное значение <literal>off</literal> отменяет действие
+унаследованной с предыдущего уровня конфигурации
+директивы <literal>proxy_bind</literal>, позволяя системе
+самостоятельно выбирать локальный IP-адрес.
+</para>
+
+<para id="proxy_bind_transparent">
+Параметр <literal>transparent</literal> (1.11.0) позволяет
+задать нелокальный IP-aдрес, который будет использоваться в
+исходящих соединениях с проксируемым сервером,
+например, реальный IP-адрес клиента:
+<example>
+proxy_bind $remote_addr transparent;
+</example>
+Для работы параметра
+обычно требуется
+запустить рабочие процессы nginx с привилегиями
+<link doc="../ngx_core_module.xml" id="user">суперпользователя</link>.
+В Linux этого не требуется (1.13.8), так как если
+указан параметр <literal>transparent</literal>, то рабочие процессы
+наследуют capability <literal>CAP_NET_RAW</literal> из главного процесса.
+Также необходимо настроить таблицу маршрутизации ядра
+для перехвата сетевого трафика с проксируемого сервера.
+</para>
+
+</directive>
+
+
+<directive name="proxy_bind_dynamic">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>stream</context>
+<context>server</context>
+<appeared-in>1.29.3</appeared-in>
+
+<para>
+Если включено, операция <link id="proxy_bind">bind</link> осуществляется
+при каждой попытке соединения.
+</para>
+
+<para>
+<note>
+Директива доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="proxy_buffer_size">
+<syntax><value>размер</value></syntax>
+<default>16k</default>
+<context>stream</context>
+<context>server</context>
+<appeared-in>1.9.4</appeared-in>
+
+<para>
+Задаёт <value>размер</value> буфера, в который будут читаться данные,
+получаемые от проксируемого сервера.
+Также задаёт <value>размер</value> буфера, в который будут читаться данные,
+получаемые от клиента.
+</para>
+
+</directive>
+
+
+<directive name="proxy_connect_timeout">
+<syntax><value>время</value></syntax>
+<default>60s</default>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Задаёт таймаут для установления соединения с проксированным сервером.
+</para>
+
+</directive>
+
+
+<directive name="proxy_download_rate">
+<syntax><value>скорость</value></syntax>
+<default>0</default>
+<context>stream</context>
+<context>server</context>
+<appeared-in>1.9.3</appeared-in>
+
+<para>
+Ограничивает скорость чтения данных от проксируемого сервера.
+<value>Скорость</value> задаётся в байтах в секунду.
+Значение 0 отключает ограничение скорости.
+Ограничение устанавливается на соединение,
+поэтому, если nginx одновременно
+откроет два соединения к проксируемому серверу,
+суммарная скорость будет вдвое выше заданного ограничения.
+</para>
+
+<para>
+В значении параметра можно использовать переменные (1.17.0).
+Это может быть полезно в случаях, когда скорость нужно ограничивать
+в зависимости от какого-либо условия:
+<example>
+map $slow $rate {
+    1     4k;
+    2     8k;
+}
+
+proxy_download_rate $rate;
+</example>
+</para>
+
+</directive>
+
+
+<directive name="proxy_half_close">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>stream</context>
+<context>server</context>
+<appeared-in>1.21.4</appeared-in>
+
+<para>
+Разрешает или запрещает независимое закрытие
+каждой из сторон проксируемого соединения TCP (“TCP half-close”).
+Если разрешено, то проксирование по TCP будет продолжаться,
+пока обе стороны не закроют соединение.
+</para>
+
+</directive>
+
+
+<directive name="proxy_next_upstream">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>on</default>
+<context>stream</context>
+<context>server</context>
+
+<para>
+При невозможности установить соединение с проксируемым сервером определяет,
+будет ли клиентское соединение передано следующему серверу.
+</para>
+
+<para>
+Передача соединения следующему серверу может быть ограничена по
+<link id="proxy_next_upstream_tries">количеству попыток</link>
+и по <link id="proxy_next_upstream_timeout">времени</link>.
+</para>
+
+</directive>
+
+
+<directive name="proxy_next_upstream_timeout">
+<syntax><value>время</value></syntax>
+<default>0</default>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Ограничивает время, в течение которого возможна передача соединения
+<link id="proxy_next_upstream">следующему серверу</link>.
+Значение <literal>0</literal> отключает это ограничение.
+</para>
+
+</directive>
+
+
+<directive name="proxy_next_upstream_tries">
+<syntax><value>число</value></syntax>
+<default>0</default>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Ограничивает число допустимых попыток для передачи соединения
+<link id="proxy_next_upstream">следующему серверу</link>.
+Значение <literal>0</literal> отключает это ограничение.
+</para>
+
+</directive>
+
+
+<directive name="proxy_pass">
+<syntax><value>адрес</value></syntax>
+<default/>
+<context>server</context>
+
+<para>
+Задаёт адрес проксируемого сервера.
+Адрес может быть указан в виде доменного имени или IP-адреса,
+и порта:
+<example>
+proxy_pass localhost:12345;
+</example>
+или в виде пути UNIX-сокета:
+<example>
+proxy_pass unix:/tmp/stream.socket;
+</example>
+</para>
+
+<para>
+Если доменному имени соответствует несколько адресов, то все они будут
+использоваться по очереди (round-robin).
+Кроме того, в качестве адреса можно указать
+<link doc="ngx_stream_upstream_module.xml">группу серверов</link>.
+</para>
+
+<para>
+Адрес можно также задать с помощью переменных (1.11.3):
+<example>
+proxy_pass $upstream;
+</example>
+В этом случае имя сервера ищется среди описанных
+<link doc="ngx_stream_upstream_module.xml">групп серверов</link>
+и если не найдено, то определяется с помощью
+<link doc="ngx_stream_core_module.xml" id="resolver"/>’а.
+</para>
+
+</directive>
+
+
+<directive name="proxy_protocol">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>stream</context>
+<context>server</context>
+<appeared-in>1.9.2</appeared-in>
+
+<para>
+Включает
+<link url="http://www.haproxy.org/download/1.8/doc/proxy-protocol.txt">протокол
+PROXY</link> для соединений с проксируемым сервером.
+</para>
+
+</directive>
+
+
+<directive name="proxy_requests">
+<syntax><value>число</value></syntax>
+<default>0</default>
+<context>stream</context>
+<context>server</context>
+<appeared-in>1.15.7</appeared-in>
+
+<para>
+Задаёт число датаграмм, полученных от клиента, по достижении которого
+удаляется привязка между клиентом и существующей UDP-сессией.
+После получения указанного количества датаграмм следующая датаграмма,
+полученная от того же клиента, начинает новую сессию.
+Cессия завершится после отправки всех принятых датаграмм
+на проксируемый сервер и
+получения указанного количества <link id="proxy_responses">ответов</link>
+или после <link id="proxy_timeout">таймаута</link>.
+</para>
+
+</directive>
+
+
+<directive name="proxy_responses">
+<syntax><value>число</value></syntax>
+<default/>
+<context>stream</context>
+<context>server</context>
+<appeared-in>1.9.13</appeared-in>
+
+<para>
+Задаёт количество датаграмм, ожидаемых от проксируемого сервера
+в ответ на датаграмму клиента
+в случае, если используется протокол
+<link doc="ngx_stream_core_module.xml" id="udp">UDP</link>.
+Задаваемое число cлужит подсказкой для завершения сессии.
+По умолчанию количество датаграмм не ограничено.
+</para>
+
+<para>
+Если указано нулевое значение, то ответ не ожидается.
+Однако если ответ получен и сессия ещё не завершилась, то ответ будет обработан.
+</para>
+
+</directive>
+
+
+<directive name="proxy_session_drop">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>stream</context>
+<context>server</context>
+<appeared-in>1.15.8</appeared-in>
+
+<para>
+Позволяет завершить все сессии к проксируемому серверу,
+если он был удалён из группы или помечен как постоянно недоступный.
+Это может произойти вследствие повторного
+<link doc="ngx_stream_core_module.xml" id="resolver">преобразования имён</link>
+в адреса, а также при помощи команды API
+<link doc="../http/ngx_http_api_module.xml" id="deleteStreamUpstreamServer"><literal>DELETE</literal></link>.
+Сервер может быть помечен как постоянно недоступный в случае неуспешной
+<link doc="ngx_stream_upstream_hc_module.xml" id="health_check">проверки работоспособности</link>,
+а также при помощи команды API
+<link doc="../http/ngx_http_api_module.xml" id="patchStreamUpstreamServer"><literal>PATCH</literal></link>.
+Сессия завершается при обработке очередного
+события чтения или записи на стороне клиента или проксируемого сервера.
+</para>
+
+<para>
+<note>
+Эта директива доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="proxy_socket_keepalive">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>stream</context>
+<context>server</context>
+<appeared-in>1.15.6</appeared-in>
+
+<para>
+Конфигурирует поведение “TCP keepalive”
+для исходящих соединений к проксируемому серверу.
+По умолчанию для сокета действуют настройки операционной системы.
+Если указано значение “<literal>on</literal>”, то
+для сокета включается параметр <c-def>SO_KEEPALIVE</c-def>.
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Включает протоколы SSL/TLS для соединений с проксируемым сервером.
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_certificate">
+<syntax><value>файл</value></syntax>
+<default/>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Задаёт <value>файл</value> с сертификатом в формате PEM
+для аутентификации на проксируемом сервере.
+</para>
+
+<para id="proxy_ssl_certificate_variables">
+Начиная с версии 1.21.0 в имени файла можно использовать переменные.
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_certificate_cache">
+<syntax><literal>off</literal></syntax>
+<syntax>
+    <literal>max</literal>=<value>N</value>
+    [<literal>inactive</literal>=<value>время</value>]
+    [<literal>valid</literal>=<value>время</value>]</syntax>
+<default>off</default>
+<context>stream</context>
+<context>server</context>
+<appeared-in>1.27.4</appeared-in>
+
+<para>
+Задаёт кэш, в котором могут храниться
+<link id="proxy_ssl_certificate">SSL-сертификаты</link> и
+<link id="proxy_ssl_certificate_key">секретные ключи</link>,
+полученные из <link id="proxy_ssl_certificate_key_variables">переменных</link>.
+</para>
+
+<para>
+У директивы есть следующие параметры:
+<list type="tag">
+
+<tag-name id="proxy_ssl_certificate_cache_max">
+<literal>max</literal>
+</tag-name>
+<tag-desc>
+задаёт максимальное число элементов в кэше;
+при переполнении кэша удаляются наименее востребованные элементы (LRU);
+</tag-desc>
+
+<tag-name id="proxy_ssl_certificate_cache_inactive">
+<literal>inactive</literal>
+</tag-name>
+<tag-desc>
+задаёт время, после которого элемент кэша удаляется,
+если к нему не было обращений в течение этого времени;
+по умолчанию 10 секунд;
+</tag-desc>
+
+<tag-name id="proxy_ssl_certificate_cache_valid">
+<literal>valid</literal>
+</tag-name>
+<tag-desc>
+задает время, в течение которого
+элемент кэша считается действительным
+и может быть повторно использован,
+по умолчанию 60 секунд.
+По завершении этого времени сертификат будет обновлён или повторно проверен;
+</tag-desc>
+
+<tag-name id="proxy_ssl_certificate_cache_off">
+<literal>off</literal>
+</tag-name>
+<tag-desc>
+запрещает кэш.
+</tag-desc>
+
+</list>
+</para>
+
+<para>
+Пример:
+<example>
+proxy_ssl_certificate       $proxy_ssl_server_name.crt;
+proxy_ssl_certificate_key   $proxy_ssl_server_name.key;
+proxy_ssl_certificate_cache max=1000 inactive=20s valid=1m;
+</example>
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_certificate_key">
+<syntax><value>файл</value></syntax>
+<default/>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Задаёт <value>файл</value> с секретным ключом в формате PEM
+для аутентификации на проксируемом сервере.
+</para>
+
+<para>
+Вместо <value>файла</value> можно указать значение
+<literal>store</literal>:<value>схема</value>:<value>id</value> (1.29.0),
+которое используется для загрузки ключа с указанным <value>id</value>
+и зарегистрированной провайдером OpenSSL <value>схемой</value> URI, такой как
+<link url="https://datatracker.ietf.org/doc/html/rfc7512"><literal>pkcs11</literal></link>.
+</para>
+
+<para id="proxy_ssl_certificate_key_variables">
+Начиная с версии 1.21.0 в имени файла можно использовать переменные.
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_ciphers">
+<syntax><value>шифры</value></syntax>
+<default>DEFAULT</default>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Описывает разрешённые шифры для соединений с проксируемым сервером.
+Шифры задаются в формате, поддерживаемом библиотекой OpenSSL.
+</para>
+
+<para>
+Полный список можно посмотреть с помощью команды
+“<command>openssl ciphers</command>”.
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_conf_command">
+<syntax><value>имя</value> <value>значение</value></syntax>
+<default/>
+<context>stream</context>
+<context>server</context>
+<appeared-in>1.19.4</appeared-in>
+
+<para>
+Задаёт произвольные конфигурационные
+<link url="https://www.openssl.org/docs/man1.1.1/man3/SSL_CONF_cmd.html">команды</link>
+OpenSSL
+при установлении соединения с проксируемым сервером.
+<note>
+Директива поддерживается при использовании OpenSSL 1.0.2 и выше.
+</note>
+</para>
+
+<para>
+На одном уровне может быть указано
+несколько директив <literal>proxy_ssl_conf_command</literal>.
+Директивы наследуются с предыдущего уровня конфигурации при условии, что
+на данном уровне не описаны
+свои директивы <literal>proxy_ssl_conf_command</literal>.
+</para>
+
+<para>
+<note>
+Следует учитывать, что изменение настроек OpenSSL напрямую
+может привести к неожиданному поведению.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_crl">
+<syntax><value>файл</value></syntax>
+<default/>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Указывает <value>файл</value> с отозванными сертификатами (CRL)
+в формате PEM, используемыми при <link id="proxy_ssl_verify">проверке</link>
+сертификата проксируемого сервера.
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_key_log">
+<syntax>путь</syntax>
+<default/>
+<context>stream</context>
+<context>server</context>
+<appeared-in>1.27.2</appeared-in>
+
+<para>
+Включает логирование SSL-ключей соединений с проксируемым сервером
+и указывает путь к лог-файлу ключей.
+Ключи записываются в формате
+<link url="https://datatracker.ietf.org/doc/html/draft-ietf-tls-keylogfile">SSLKEYLOGFILE</link>
+совместимом с Wireshark.
+</para>
+
+<para>
+<note>
+Директива доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_name">
+<syntax><value>имя</value></syntax>
+<default>хост из proxy_pass</default>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Позволяет переопределить имя сервера, используемое при
+<link id="proxy_ssl_verify">проверке</link>
+сертификата проксируемого сервера, а также для
+<link id="proxy_ssl_server_name">передачи его через SNI</link>
+при установлении соединения с проксируемым сервером.
+Имя сервера можно также задать с помощью переменных (1.11.3).
+</para>
+
+<para>
+По умолчанию используется имя хоста из адреса, заданного
+директивой <link id="proxy_pass"/>.
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_password_file">
+<syntax><value>файл</value></syntax>
+<default/>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Задаёт <value>файл</value> с паролями от
+<link id="proxy_ssl_certificate_key">секретных ключей</link>,
+где каждый пароль указан на отдельной строке.
+Пароли применяются по очереди в момент загрузки ключа.
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_protocols">
+<syntax>
+    [<literal>SSLv2</literal>]
+    [<literal>SSLv3</literal>]
+    [<literal>TLSv1</literal>]
+    [<literal>TLSv1.1</literal>]
+    [<literal>TLSv1.2</literal>]
+    [<literal>TLSv1.3</literal>]</syntax>
+<default>TLSv1.2 TLSv1.3</default>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Разрешает указанные протоколы для соединений с проксируемым сервером.
+</para>
+
+<para>
+<note>
+Параметр <literal>TLSv1.3</literal> используется по умолчанию
+начиная с 1.23.4.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_server_name">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Разрешает или запрещает передачу имени сервера через
+<link url="http://en.wikipedia.org/wiki/Server_Name_Indication">расширение
+Server Name Indication протокола TLS</link> (SNI, RFC 6066)
+при установлении соединения с проксируемым сервером.
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_session_reuse">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>on</default>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Определяет, использовать ли повторно SSL-сессии при
+работе с проксируемым сервером.
+Если в логах появляются ошибки
+“<literal>digest check failed</literal>”,
+то можно попробовать выключить
+повторное использование сессий.
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_trusted_certificate">
+<syntax><value>файл</value></syntax>
+<default/>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Задаёт <value>файл</value> с доверенными сертификатами CA в формате PEM,
+используемыми при <link id="proxy_ssl_verify">проверке</link>
+сертификата проксируемого сервера.
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_verify">
+<syntax><literal>on</literal> | <literal>off</literal></syntax>
+<default>off</default>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Разрешает или запрещает проверку сертификата проксируемого сервера.
+</para>
+
+</directive>
+
+
+<directive name="proxy_ssl_verify_depth">
+<syntax><value>число</value></syntax>
+<default>1</default>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Устанавливает глубину проверки в цепочке сертификатов проксируемого сервера.
+</para>
+
+</directive>
+
+
+<directive name="proxy_timeout">
+<syntax><value>время</value></syntax>
+<default>10m</default>
+<context>stream</context>
+<context>server</context>
+
+<para>
+Задаёт <value>таймаут</value> между двумя идущими подряд
+операциями чтения или записи
+на клиентском соединении или соединении с проксируемым сервером.
+Если по истечении этого времени данные не передавались,
+соединение закрывается.
+</para>
+
+</directive>
+
+
+<directive name="proxy_upload_rate">
+<syntax><value>скорость</value></syntax>
+<default>0</default>
+<context>stream</context>
+<context>server</context>
+<appeared-in>1.9.3</appeared-in>
+
+<para>
+Ограничивает скорость чтения данных от клиента.
+<value>Скорость</value> задаётся в байтах в секунду.
+Значение 0 отключает ограничение скорости.
+Ограничение устанавливается на соединение,
+поэтому, если клиент одновременно
+откроет два соединения,
+суммарная скорость будет вдвое выше заданного ограничения.
+</para>
+
+<para>
+В значении параметра можно использовать переменные (1.17.0).
+Это может быть полезно в случаях, когда скорость нужно ограничивать
+в зависимости от какого-либо условия:
+<example>
+map $slow $rate {
+    1     4k;
+    2     8k;
+}
+
+proxy_upload_rate $rate;
+</example>
+</para>
+
+</directive>
+
+</section>
+
+</module>

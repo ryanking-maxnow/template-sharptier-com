@@ -1,0 +1,1465 @@
+<?xml version="1.0"?>
+
+<!--
+  Copyright (C) Igor Sysoev
+  Copyright (C) Nginx, Inc.
+  -->
+
+<!DOCTYPE module SYSTEM "../../../../dtd/module.dtd">
+
+<module name="Модуль ngx_http_upstream_module"
+        link="/ru/docs/http/ngx_http_upstream_module.html"
+        lang="ru"
+        rev="91">
+
+<section id="summary">
+
+<para>
+Модуль <literal>ngx_http_upstream_module</literal>
+позволяет описывать группы серверов,
+которые могут использоваться в директивах
+<link doc="ngx_http_proxy_module.xml" id="proxy_pass"/>,
+<link doc="ngx_http_fastcgi_module.xml" id="fastcgi_pass"/>,
+<link doc="ngx_http_uwsgi_module.xml" id="uwsgi_pass"/>,
+<link doc="ngx_http_scgi_module.xml" id="scgi_pass"/>,
+<link doc="ngx_http_memcached_module.xml" id="memcached_pass"/> и
+<link doc="ngx_http_grpc_module.xml" id="grpc_pass"/>.
+</para>
+
+</section>
+
+
+<section id="example" name="Пример конфигурации">
+
+<para>
+<example>
+upstream <emphasis>backend</emphasis> {
+    server backend1.example.com       weight=5;
+    server backend2.example.com:8080;
+    server unix:/tmp/backend3;
+
+    server backup1.example.com:8080   backup;
+    server backup2.example.com:8080   backup;
+}
+
+server {
+    location / {
+        proxy_pass http://<emphasis>backend</emphasis>;
+    }
+}
+</example>
+</para>
+
+<para>
+Динамически настраиваемая группа
+с периодическими
+<link doc="ngx_http_upstream_hc_module.xml">проверками работоспособности</link>
+доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>:
+<example>
+resolver 10.0.0.1;
+
+upstream <emphasis>dynamic</emphasis> {
+    zone upstream_dynamic 64k;
+
+    server backend1.example.com      weight=5;
+    server backend2.example.com:8080 fail_timeout=5s slow_start=30s;
+    server 192.0.2.1                 max_fails=3;
+    server backend3.example.com      resolve;
+    server backend4.example.com      service=http resolve;
+
+    server backup1.example.com:8080  backup;
+    server backup2.example.com:8080  backup;
+}
+
+server {
+    location / {
+        proxy_pass http://<emphasis>dynamic</emphasis>;
+        health_check;
+    }
+}
+</example>
+</para>
+
+</section>
+
+
+<section id="directives" name="Директивы">
+
+<directive name="upstream">
+<syntax block="yes"><value>название</value></syntax>
+<default/>
+<context>http</context>
+
+<para>
+Описывает группу серверов.
+Серверы могут слушать на разных портах.
+Кроме того, можно одновременно использовать серверы,
+слушающие на TCP- и UNIX-сокетах.
+</para>
+
+<para>
+Пример:
+<example>
+upstream backend {
+    server backend1.example.com weight=5;
+    server 127.0.0.1:8080       max_fails=3 fail_timeout=30s;
+    server unix:/tmp/backend3;
+
+    server backup1.example.com  backup;
+}
+</example>
+</para>
+
+<para>
+По умолчанию запросы распределяются по серверам циклически
+(в режиме round-robin) с учётом весов серверов.
+В вышеприведённом примере каждые 7 запросов будут распределены так:
+5 запросов на <literal>backend1.example.com</literal>
+и по одному запросу на второй и третий серверы.
+Если при попытке работы с сервером происходит ошибка, то запрос
+передаётся следующему серверу, и так далее до тех пор, пока не будут опробованы
+все работающие серверы.
+Если не удастся получить успешный ответ
+ни от одного из серверов, то клиенту будет возвращён результат работы
+с последним сервером.
+</para>
+
+</directive>
+
+
+<directive name="server">
+<syntax><value>адрес</value> [<value>параметры</value>]</syntax>
+<default/>
+<context>upstream</context>
+
+<para>
+Задаёт <value>адрес</value> и другие <value>параметры</value>
+сервера.
+Адрес может быть указан в виде доменного имени или IP-адреса,
+и необязательного порта, или в виде пути UNIX-сокета, который
+указывается после префикса “<literal>unix:</literal>”.
+Если порт не указан, используется порт 80.
+Доменное имя, которому соответствует несколько IP-адресов,
+задаёт сразу несколько серверов.
+</para>
+
+<para>
+Могут быть заданы следующие параметры:
+<list type="tag">
+
+<tag-name id="weight">
+<literal>weight</literal>=<value>число</value>
+</tag-name>
+<tag-desc>
+задаёт вес сервера, по умолчанию 1.
+</tag-desc>
+
+<tag-name id="max_conns">
+<literal>max_conns</literal>=<value>число</value>
+</tag-name>
+<tag-desc>
+ограничивает максимальное <value>число</value> одновременных активных
+соединений к проксируемому серверу (1.11.5).
+Значение по умолчанию равно 0 и означает, что ограничения нет.
+Если группа не находится в <link id="zone">зоне разделяемой памяти</link>,
+то ограничение работает отдельно для каждого рабочего процесса.
+<note>
+При включённых <link id="keepalive">неактивных постоянных</link> соединениях,
+нескольких
+<link doc="../ngx_core_module.xml" id="worker_processes">рабочих процессах</link>
+и <link id="zone">зоне разделяемой памяти</link>,
+суммарное число активных и неактивных соединений с проксируемым сервером
+может превышать значение <literal>max_conns</literal>.
+</note>
+<note>
+Начиная с версии 1.5.9 и до версии 1.11.5
+этот параметр был доступен как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</tag-desc>
+
+<tag-name id="max_fails">
+<literal>max_fails</literal>=<value>число</value>
+</tag-name>
+<tag-desc>
+задаёт число неудачных попыток работы с сервером, которые должны произойти
+в течение времени, заданного параметром <literal>fail_timeout</literal>,
+чтобы сервер считался недоступным на период времени, также заданный
+параметром <literal>fail_timeout</literal>.
+По умолчанию число попыток устанавливается равным 1.
+Нулевое значение отключает учёт попыток.
+Что считается неудачной попыткой, определяется директивами
+<link doc="ngx_http_proxy_module.xml" id="proxy_next_upstream"/>,
+<link doc="ngx_http_fastcgi_module.xml" id="fastcgi_next_upstream"/>,
+<link doc="ngx_http_uwsgi_module.xml" id="uwsgi_next_upstream"/>,
+<link doc="ngx_http_scgi_module.xml" id="scgi_next_upstream"/>,
+<link doc="ngx_http_memcached_module.xml" id="memcached_next_upstream"/> и
+<link doc="ngx_http_grpc_module.xml" id="grpc_next_upstream"/>.
+</tag-desc>
+
+<tag-name id="fail_timeout">
+<literal>fail_timeout</literal>=<value>время</value>
+</tag-name>
+<tag-desc>
+задаёт
+<list type="bullet">
+
+<listitem>
+время, в течение которого должно произойти заданное число неудачных
+попыток работы с сервером для того, чтобы сервер считался недоступным;
+</listitem>
+
+<listitem>
+и время, в течение которого сервер будет считаться недоступным.
+</listitem>
+
+</list>
+По умолчанию параметр равен 10 секундам.
+</tag-desc>
+
+<tag-name id="backup">
+<literal>backup</literal>
+</tag-name>
+<tag-desc>
+помечает сервер как запасной сервер.
+На него будут передаваться запросы в случае, если не работают основные серверы.
+<note>
+Параметр нельзя использовать совместно с
+методами балансировки нагрузки
+<link id="hash"/>, <link id="ip_hash"/> и <link id="random"/>.
+</note>
+</tag-desc>
+
+<tag-name id="down">
+<literal>down</literal>
+</tag-name>
+<tag-desc>
+помечает сервер как постоянно недоступный.
+</tag-desc>
+
+<tag-name id="resolve">
+<literal>resolve</literal>
+</tag-name>
+<tag-desc>
+отслеживает изменения IP-адресов, соответствующих доменному имени сервера,
+и автоматически изменяет конфигурацию группы
+без необходимости перезапуска nginx (1.5.12).
+Группа должна находиться в <link id="zone">зоне разделяемой памяти</link>.
+<para>
+Для работы этого параметра
+директива <literal>resolver</literal>
+должна быть задана в блоке
+<link doc="ngx_http_core_module.xml" id="resolver">http</link>
+или в соответствующем блоке <link id="resolver">upstream</link>.
+</para>
+
+<para>
+<note>
+До версии 1.27.3 этот параметр был доступен только как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+</tag-desc>
+
+<tag-name id="service">
+<literal>service</literal>=<value>имя</value>
+</tag-name>
+<tag-desc>
+включает преобразование
+<link url="https://datatracker.ietf.org/doc/html/rfc2782">SRV</link>-записей
+DNS и задаёт <value>имя</value> сервиса (1.9.13).
+Для работы параметра необходимо указать
+параметр <link id="resolve"/> для сервера
+и не указывать порт сервера.
+<para>
+Если имя сервиса не содержит точку (“<literal>.</literal>”), то
+имя составляется в соответствии с
+<link url="https://datatracker.ietf.org/doc/html/rfc2782">RFC</link>
+и в префикс службы добавляется протокол TCP.
+Например, для получения
+SRV-записи <literal>_http._tcp.backend.example.com</literal>
+необходимо указать директиву:
+<example>
+server backend.example.com service=http resolve;
+</example>
+Если имя сервиса содержит одну и более точек, то имя составляется
+при помощи соединения префикса службы и имени сервера.
+Например, для получения SRV-записей
+<literal>_http._tcp.backend.example.com</literal>
+и <literal>server1.backend.example.com</literal>
+необходимо указать директивы:
+<example>
+server backend.example.com service=_http._tcp resolve;
+server example.com service=server1.backend resolve;
+</example>
+</para>
+
+<para>
+SRV-записи с наивысшим приоритетом
+(записи с одинаковым наименьшим значением приоритета)
+преобразуются в основные серверы,
+остальные SRV-записи преобразуются в запасные серверы.
+Если в конфигурации сервера указан параметр <link id="backup"/>,
+высокоприоритетные SRV-записи преобразуются в запасные серверы,
+остальные SRV-записи игнорируются.
+</para>
+
+<para>
+<note>
+До версии 1.27.3 этот параметр был доступен только как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+</tag-desc>
+
+</list>
+</para>
+
+<para>
+Кроме того,
+следующие параметры доступны как часть
+<commercial_version>коммерческой подписки</commercial_version>:
+<list type="tag">
+
+<tag-name id="route">
+<literal>route</literal>=<value>строка</value>
+</tag-name>
+<tag-desc>
+задаёт имя маршрута к серверу.
+</tag-desc>
+
+<tag-name id="slow_start">
+<literal>slow_start</literal>=<value>время</value>
+</tag-name>
+<tag-desc>
+задаёт <value>время</value>, в течение которого вес сервера
+восстановится от нуля до своего номинального значения в ситуации, когда
+неработоспособный (unhealthy) сервер вновь становится работоспособным
+(<link doc="ngx_http_upstream_hc_module.xml" id="health_check">healthy</link>)
+или когда сервер становится доступным по прошествии времени,
+в течение которого он считался <link id="fail_timeout">недоступным</link>.
+Значение по умолчанию равно нулю и означает, что медленный старт выключен.
+<note>
+Параметр нельзя использовать совместно с
+методами балансировки нагрузки
+<link id="hash"/>, <link id="ip_hash"/> и <link id="random"/>.
+</note>
+</tag-desc>
+
+<tag-name id="drain">
+<literal>drain</literal>
+</tag-name>
+<tag-desc>
+переводит сервер в режим “draining” (1.13.6).
+В этом режиме на сервер будут проксироваться только
+<link id="sticky">привязанные</link> к нему запросы.
+<note>
+До версии 1.13.6
+параметр мог быть изменён только при помощи
+модуля <link doc="ngx_http_api_module.xml">API</link>.
+</note>
+</tag-desc>
+
+</list>
+</para>
+
+<para>
+<note>
+Если в группе только один сервер, параметры <literal>max_fails</literal>,
+<literal>fail_timeout</literal> и <literal>slow_start</literal>
+игнорируются и такой сервер никогда не будет считаться недоступным.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="zone">
+<syntax><value>имя</value> [<value>размер</value>]</syntax>
+<default/>
+<context>upstream</context>
+<appeared-in>1.9.0</appeared-in>
+
+<para>
+Задаёт <value>имя</value> и <value>размер</value> зоны разделяемой памяти,
+в которой хранятся конфигурация группы и её рабочее состояние,
+разделяемые между рабочими процессами.
+В одной и той же зоне могут быть сразу несколько групп.
+В этом случае достаточно указать <value>размер</value> только один раз.
+</para>
+
+<para>
+Дополнительно, как часть
+<commercial_version>коммерческой подписки</commercial_version>,
+в таких группах для изменения состава группы
+или настроек отдельных серверов
+нет необходимости перезапускать nginx.
+Конфигурация доступна через
+модуль <link doc="ngx_http_api_module.xml">API</link> (1.13.3).
+<note>
+До версии 1.13.3
+конфигурация была доступна только через специальный location,
+в котором указана директива
+<link doc="ngx_http_upstream_conf_module.xml" id="upstream_conf"/>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="state">
+<syntax><value>файл</value></syntax>
+<default/>
+<context>upstream</context>
+<appeared-in>1.9.7</appeared-in>
+
+<para>
+Задаёт <value>файл</value>, в котором хранится состояние
+динамически настраиваемой группы.
+</para>
+
+<para>
+Примеры:
+<example>
+state /var/lib/nginx/state/servers.conf; # путь для Linux
+state /var/db/nginx/state/servers.conf;  # путь для FreeBSD
+</example>
+</para>
+
+<para>
+В данный момент состояние ограничено списком серверов с их параметрами.
+Файл читается при парсинге конфигурации и обновляется каждый раз при
+<link doc="ngx_http_api_module.xml" id="http_upstreams_http_upstream_name_servers_">изменении</link>
+конфигурации группы.
+Изменение содержимого файла напрямую не рекомендуется.
+Директиву нельзя использовать
+совместно с директивой <link id="server"/>.
+</para>
+
+<para>
+<note>
+Изменения, совершённые в момент
+<link doc="../control.xml" id="reconfiguration">перезагрузки конфигурации</link>
+или <link doc="../control.xml" id="upgrade">обновления бинарного файла</link>,
+могут быть потеряны.
+</note>
+</para>
+
+<para>
+<note>
+Эта директива доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="hash">
+<syntax><value>ключ</value> [<literal>consistent</literal>]</syntax>
+<default/>
+<context>upstream</context>
+<appeared-in>1.7.2</appeared-in>
+
+<para>
+Задаёт метод балансировки нагрузки для группы, при котором
+соответствие клиента серверу определяется при помощи
+хэшированного значения <value>ключа</value>.
+В качестве <value>ключа</value> может использоваться
+текст, переменные и их комбинации.
+Следует отметить, что любое добавление или удаление серверов в группе
+может привести к перераспределению большинства ключей на другие серверы.
+Метод совместим с библиотекой Perl
+<link url="https://metacpan.org/pod/Cache::Memcached">Cache::Memcached</link>.
+</para>
+
+<para>
+Если задан параметр <literal>consistent</literal>, то вместо
+вышеописанного метода будет использоваться метод консистентного хэширования
+<link url="https://www.metabrew.com/article/libketama-consistent-hashing-algo-memcached-clients">ketama</link>.
+Метод гарантирует, что при добавлении сервера в группу или его удалении
+на другие серверы будет перераспределено минимальное число ключей.
+Применение метода для кэширующих серверов обеспечивает
+больший процент попаданий в кэш.
+Метод совместим с библиотекой Perl
+<link url="https://metacpan.org/pod/Cache::Memcached::Fast">Cache::Memcached::Fast</link>
+при значении параметра <value>ketama_points</value> равным 160.
+</para>
+
+</directive>
+
+
+<directive name="ip_hash">
+<syntax/>
+<default/>
+<context>upstream</context>
+
+<para>
+Задаёт для группы метод балансировки нагрузки, при котором запросы
+распределяются по серверам на основе IP-адресов клиентов.
+В качестве ключа для хэширования используются первые три
+октета IPv4-адреса клиента или IPv6-адрес клиента целиком.
+Метод гарантирует, что запросы одного и того же клиента
+будут всегда передаваться на один и тот же сервер.
+Если же этот сервер будет считаться недоступным,
+то запросы этого клиента будут передаваться на другой сервер.
+С большой долей вероятности это также будет один и тот же сервер.
+<note>
+IPv6-адреса поддерживаются начиная с версий 1.3.2 и 1.2.2.
+</note>
+</para>
+
+<para>
+Если один из серверов нужно убрать на некоторое время, то для сохранения
+текущего хэширования IP-адресов клиентов этот сервер нужно пометить
+параметром <literal>down</literal>.
+</para>
+
+<para>
+Пример:
+<example>
+upstream backend {
+    ip_hash;
+
+    server backend1.example.com;
+    server backend2.example.com;
+    server backend3.example.com <emphasis>down</emphasis>;
+    server backend4.example.com;
+}
+</example>
+</para>
+
+<para>
+<note>
+До версий 1.3.1 и 1.2.2 для серверов, использующих метод балансировки нагрузки
+<literal>ip_hash</literal>, нельзя было задать вес.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="keepalive">
+<syntax><value>соединения</value></syntax>
+<default/>
+<context>upstream</context>
+<appeared-in>1.1.4</appeared-in>
+
+<para>
+Задействует кэш соединений для группы серверов.
+</para>
+
+<para>
+Параметр <value>соединения</value> устанавливает максимальное число
+неактивных постоянных соединений с серверами группы, которые будут
+сохраняться в кэше каждого рабочего процесса.
+При превышении этого числа наиболее давно не используемые соединения
+закрываются.
+<note>
+Следует особо отметить, что директива <literal>keepalive</literal>
+не ограничивает общее число соединений с серверами группы, которые
+рабочие процессы nginx могут открыть.
+Параметр <value>соединения</value> следует устанавливать достаточно
+консервативно, чтобы серверы группы по-прежнему могли обрабатывать
+новые входящие соединения.
+</note>
+
+<note>
+При использовании методов балансировки нагрузки, отличных
+от стандартного round-robin, следует активировать их до
+директивы <literal>keepalive</literal>.
+</note>
+</para>
+
+<para>
+Пример конфигурации группы серверов memcached с постоянными соединениями:
+<example>
+upstream memcached_backend {
+    server 127.0.0.1:11211;
+    server 10.0.0.2:11211;
+
+    keepalive 32;
+}
+
+server {
+    ...
+
+    location /memcached/ {
+        set $memcached_key $uri;
+        memcached_pass memcached_backend;
+    }
+
+}
+</example>
+</para>
+
+<para>
+Для HTTP директиву
+<link doc="ngx_http_proxy_module.xml" id="proxy_http_version"/>
+следует установить в “<literal>1.1</literal>” или “<literal>2</literal>”,
+а поле заголовка <header>Connection</header> — очистить:
+<example>
+upstream http_backend {
+    server 127.0.0.1:8080;
+
+    keepalive 16;
+}
+
+server {
+    ...
+
+    location /http/ {
+        proxy_pass http://http_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        ...
+    }
+}
+</example>
+</para>
+
+<para>
+<note>
+Хоть это и не рекомендуется, но также возможно использование постоянных
+соединений с HTTP/1.0, путём передачи поля заголовка
+<header>Connection: Keep-Alive</header> серверу группы.
+</note>
+</para>
+
+<para>
+Для работы постоянных соединений с FastCGI-серверами потребуется
+включить директиву
+<link doc="ngx_http_fastcgi_module.xml" id="fastcgi_keep_conn"/>:
+<example>
+upstream fastcgi_backend {
+    server 127.0.0.1:9000;
+
+    keepalive 8;
+}
+
+server {
+    ...
+
+    location /fastcgi/ {
+        fastcgi_pass fastcgi_backend;
+        fastcgi_keep_conn on;
+        ...
+    }
+}
+</example>
+</para>
+
+<para>
+<note>
+Протоколы SCGI и uwsgi не определяют семантику постоянных соединений.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="keepalive_requests">
+<syntax><value>число</value></syntax>
+<default>1000</default>
+<context>upstream</context>
+<appeared-in>1.15.3</appeared-in>
+
+<para>
+Задаёт максимальное число запросов, которые можно
+сделать по одному постоянному соединению.
+После того как сделано максимальное число запросов,
+соединение закрывается.
+</para>
+
+<para>
+Периодическое закрытие соединений необходимо для освобождения
+памяти, выделенной под конкретные соединения.
+Поэтому использование слишком большого максимального числа запросов
+может приводить к чрезмерному потреблению памяти и не рекомендуется.
+</para>
+
+<para>
+<note>
+До версии 1.19.10 по умолчанию использовалось значение 100.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="keepalive_time">
+<syntax><value>время</value></syntax>
+<default>1h</default>
+<context>upstream</context>
+<appeared-in>1.19.10</appeared-in>
+
+<para>
+Ограничивает максимальное время, в течение которого
+могут обрабатываться запросы в рамках постоянного соединения.
+По достижении заданного времени соединение закрывается
+после обработки очередного запроса.
+</para>
+
+</directive>
+
+
+<directive name="keepalive_timeout">
+<syntax><value>таймаут</value></syntax>
+<default>60s</default>
+<context>upstream</context>
+<appeared-in>1.15.3</appeared-in>
+
+<para>
+Задаёт таймаут, в течение которого неактивное постоянное
+соединение с сервером группы не будет закрыто.
+</para>
+
+</directive>
+
+
+<directive name="ntlm">
+<syntax/>
+<default/>
+<context>upstream</context>
+<appeared-in>1.9.2</appeared-in>
+
+<para>
+Позволяет проксировать запросы с
+<link url="https://en.wikipedia.org/wiki/Integrated_Windows_Authentication">проверкой
+подлинности NTLM</link>.
+Соединение с сервером группы привязывается к клиентскому соединению
+как только клиент отправляет запрос, в заголовке которого есть поле
+<header>Authorization</header> со значением,
+начинающимся с “<literal>Negotiate</literal>” или “<literal>NTLM</literal>”.
+Последующие запросы клиента будут проксироваться через это же соединение
+с сервером группы,
+сохраняя контекст аутентификации.
+</para>
+
+<para>
+Для работы проверки подлинности NTLM
+необходимо разрешить постоянные соединения с серверами группы.
+Директиву <link doc="ngx_http_proxy_module.xml" id="proxy_http_version"/>
+следует установить в “<literal>1.1</literal>” или “<literal>2</literal>”,
+а поле заголовка <header>Connection</header> — очистить:
+<example>
+upstream http_backend {
+    server 127.0.0.1:8080;
+
+    ntlm;
+}
+
+server {
+    ...
+
+    location /http/ {
+        proxy_pass http://http_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        ...
+    }
+}
+</example>
+</para>
+
+<para>
+<note>
+При использовании методов балансировки нагрузки, отличных
+от стандартного round-robin, следует активировать их до
+директивы <literal>ntlm</literal>.
+</note>
+</para>
+
+<para>
+<note>
+Эта директива доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="least_conn">
+<syntax/>
+<default/>
+<context>upstream</context>
+<appeared-in>1.3.1</appeared-in>
+<appeared-in>1.2.2</appeared-in>
+
+<para>
+Задаёт для группы метод балансировки нагрузки, при котором запрос
+передаётся серверу с наименьшим числом активных соединений,
+с учётом весов серверов.
+Если подходит сразу несколько серверов, они выбираются циклически
+(в режиме round-robin) с учётом их весов.
+</para>
+
+</directive>
+
+
+<directive name="least_time">
+<syntax>
+    <literal>header</literal> |
+    <literal>last_byte</literal>
+    [<literal>inflight</literal>]</syntax>
+<default/>
+<context>upstream</context>
+<appeared-in>1.7.10</appeared-in>
+
+<para>
+Задаёт для группы метод балансировки нагрузки, при котором запрос
+передаётся серверу с наименьшими средним временем ответа и
+числом активных соединений с учётом весов серверов.
+Если подходит сразу несколько серверов, то они выбираются циклически
+(в режиме round-robin) с учётом их весов.
+</para>
+
+<para>
+Если указан параметр <literal>header</literal>,
+то учитывается время получения
+<link id="var_upstream_header_time">заголовка ответа</link>.
+Если указан параметр <literal>last_byte</literal>, то учитывается
+время получения <link id="var_upstream_response_time">всего ответа</link>.
+Если указан параметр <literal>inflight</literal> (1.11.6),
+то также учитываются незавершённые запросы.
+<note>
+До версии 1.11.6 незавершённые запросы учитывались по умолчанию.
+</note>
+</para>
+
+<para>
+<note>
+Эта директива доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="queue">
+<syntax>
+<value>число</value>
+[<literal>timeout</literal>=<value>время</value>]</syntax>
+<default/>
+<context>upstream</context>
+<appeared-in>1.5.12</appeared-in>
+
+<para>
+Если при обработке запроса невозможно сразу выбрать сервер группы, то
+запрос будет помещён в очередь.
+Директива задаёт максимальное <value>число</value> запросов,
+которые могут одновременно находиться в очереди.
+Если очередь переполнена
+или за время, задаваемое параметром <literal>timeout</literal>,
+так и не удастся выбрать сервер для передачи ему запроса,
+клиенту будет возвращена ошибка
+<http-status code="502" text="Bad Gateway"/>.
+</para>
+
+<para>
+По умолчанию параметр <literal>timeout</literal> равен 60 секундам.
+</para>
+
+<para>
+<note>
+При использовании методов балансировки нагрузки, отличных
+от стандартного round-robin, следует активировать их до
+директивы <literal>queue</literal>.
+</note>
+
+<note>
+Эта директива доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="random">
+<syntax>[<literal>two</literal> [<value>метод</value>]]</syntax>
+<default/>
+<context>upstream</context>
+<appeared-in>1.15.1</appeared-in>
+
+<para>
+Задаёт для группы метод балансировки нагрузки, при котором запрос
+передаётся случайно выбранному серверу, с учётом весов
+серверов.
+</para>
+
+<para>
+Если указан необязательный параметр <literal>two</literal>,
+то nginx случайным образом выбирает
+<link url="https://homes.cs.washington.edu/~karlin/papers/balls.pdf">два</link>
+сервера, из которых выбирает сервер,
+используя указанный <literal>метод</literal>.
+Методом по умолчанию является <literal>least_conn</literal>,
+при котором запрос передаётся на сервер
+с наименьшим количеством активных соединений.
+</para>
+
+<para id="random_least_time">
+Если указан метод <literal>least_time</literal>, то запрос передаётся серверу
+с наименьшими средним временем ответа и числом активных соединений.
+Если указан <literal>least_time=header</literal>, то учитывается
+время получения <link id="var_upstream_header_time">заголовка ответа</link>.
+Если указан <literal>least_time=last_byte</literal>, то учитывается
+время получения <link id="var_upstream_response_time">всего ответа</link>.
+<note>
+Метод <literal>least_time</literal> доступен как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="resolver">
+<syntax>
+    <value>адрес</value> ...
+    [<literal>valid</literal>=<value>время</value>]
+    [<literal>ipv4</literal>=<literal>on</literal>|<literal>off</literal>]
+    [<literal>ipv6</literal>=<literal>on</literal>|<literal>off</literal>]
+    [<literal>status_zone</literal>=<value>зона</value>]</syntax>
+<default/>
+<context>upstream</context>
+<appeared-in>1.27.3</appeared-in>
+
+<para>
+Задаёт серверы DNS, используемые для преобразования имён вышестоящих серверов
+в адреса, например:
+<example>
+resolver 127.0.0.1 [::1]:5353;
+</example>
+Адрес может быть указан в виде доменного имени или IP-адреса,
+и необязательного порта.
+Если порт не указан, используется порт 53.
+Серверы DNS опрашиваются циклически.
+</para>
+
+<para id="resolver_ipv6">
+По умолчанию nginx будет искать как IPv4-, так и IPv6-адреса
+при преобразовании имён в адреса.
+Если поиск IPv4- или IPv6-адресов нежелателен,
+можно указать параметр <literal>ipv4=off</literal> (1.23.1) или
+<literal>ipv6=off</literal>.
+</para>
+
+<para id="resolver_valid">
+По умолчанию nginx кэширует ответы, используя значение TTL из ответа.
+Необязательный параметр <literal>valid</literal> позволяет это
+переопределить:
+<example>
+resolver 127.0.0.1 [::1]:5353 valid=30s;
+</example>
+<note>
+Для предотвращения DNS-спуфинга рекомендуется
+использовать DNS-серверы в защищённой доверенной локальной сети.
+</note>
+</para>
+
+<para id="resolver_status_zone">
+Необязательный параметр <literal>status_zone</literal> (1.17.5)
+включает
+<link doc="ngx_http_api_module.xml" id="resolvers_">сбор информации</link>
+о запросах и ответах сервера DNS
+в указанной <value>зоне</value>.
+Параметр доступен как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</para>
+
+<para>
+<note>
+Начиная с версии 1.17.5 и до версии 1.27.3
+эта директива была доступна только как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="resolver_timeout">
+<syntax><value>время</value></syntax>
+<default>30s</default>
+<context>upstream</context>
+<appeared-in>1.27.3</appeared-in>
+
+<para>
+Задаёт таймаут для преобразования имени в адрес, например:
+<example>
+resolver_timeout 5s;
+</example>
+</para>
+
+<para>
+<note>
+Начиная с версии 1.17.5 и до версии 1.27.3
+эта директива была доступна только как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="sticky">
+<syntax>
+    <literal>cookie</literal> <value>имя</value>
+    [<literal>expires=</literal><value>время</value>]
+    [<literal>domain=</literal><value>домен</value>]
+    [<literal>httponly</literal>]
+    [<literal>samesite=</literal><literal>strict</literal>|<literal>lax</literal>|<literal>none</literal>|<value>$переменная</value>]
+    [<literal>secure</literal>]
+    [<literal>path=</literal><value>путь</value>]</syntax>
+<syntax>
+    <literal>route</literal> <value>$переменная</value> ...</syntax>
+<syntax>
+    <literal>learn</literal>
+    <literal>create=</literal><value>$переменная</value>
+    <literal>lookup=</literal><value>$переменная</value>
+    <literal>zone=</literal><value>имя</value>:<value>размер</value>
+    [<literal>timeout=</literal><value>время</value>]
+    [<literal>header</literal>]
+    [<literal>sync</literal>]</syntax>
+<default/>
+<context>upstream</context>
+<appeared-in>1.5.7</appeared-in>
+
+<para>
+Включает режим привязки сеансов, в котором запросы клиента
+будут передаваться на один и тот же сервер группы.
+Доступны три метода:
+<list type="tag">
+<tag-name id="sticky_cookie"><literal>cookie</literal></tag-name>
+<tag-desc>
+
+<para>
+При использовании метода <literal>cookie</literal> информация о
+назначенном сервере передаётся в HTTP-куке:
+<example>
+upstream backend {
+    server backend1.example.com;
+    server backend2.example.com;
+
+    sticky cookie srv_id expires=1h domain=.example.com path=/;
+}
+</example>
+</para>
+
+<para>
+Запрос от клиента, ещё не привязанного к определённому серверу,
+передаётся на сервер, выбранный согласно настроенному методу балансировки.
+Дальнейшие запросы от этого клиента передаются на тот же сервер.
+Если назначенный сервер не может обработать запрос, выбирается новый
+сервер как если бы клиент не имел привязки к серверу.
+
+<note>
+Так как любой метод балансировки пытается равномерно распределить нагрузку,
+учитывая уже привязанные запросы,
+сервер с наибольшим количеством привязанных запросов
+имеет меньшую вероятность получить новые, не привязанные запросы.
+</note>
+</para>
+
+<para>
+Первый параметр задаёт имя куки, которую необходимо установить или проверить.
+Значением куки является MD5-хэш IP-адреса и порта
+(или пути UNIX-сокета) в шестнадцатеричном виде.
+Однако если указан параметр “<literal>route</literal>”
+директивы <link id="server"/>, то значением куки будет
+значение параметра “<literal>route</literal>”:
+<example>
+upstream backend {
+    server backend1.example.com route=<emphasis>a</emphasis>;
+    server backend2.example.com route=<emphasis>b</emphasis>;
+
+    sticky cookie srv_id expires=1h domain=.example.com path=/;
+}
+</example>
+В этом случае значение куки “<literal>srv_id</literal>” будет
+или <value>a</value>, или <value>b</value>.
+</para>
+
+<para>
+Дополнительные параметры могут быть следующими:
+<list type="tag">
+
+<tag-name><literal>expires=</literal><value>время</value></tag-name>
+<tag-desc>
+Задаёт <value>время</value>, в течение которого браузеру необходимо хранить куку.
+Специальное значение <literal>max</literal> устанавливает срок хранения куки до
+31 декабря 2037 года 23:55:55 GMT.
+Если параметр не указан, то время действия куки ограничивается сессией браузера.
+</tag-desc>
+
+<tag-name><literal>domain=</literal><value>домен</value></tag-name>
+<tag-desc>
+Задаёт <value>домен</value>, для которого устанавливается кука.
+В значении параметра можно использовать переменные (1.11.5).
+</tag-desc>
+
+<tag-name><literal>httponly</literal></tag-name>
+<tag-desc>
+Добавляет атрибут <literal>HttpOnly</literal> к куке (1.7.11).
+</tag-desc>
+
+<tag-name id="sticky_samesite"><literal>samesite=</literal><literal>strict</literal> |
+<literal>lax</literal> | <literal>none</literal> | <literal>$переменная</literal></tag-name>
+<tag-desc>
+Добавляет атрибут <literal>SameSite</literal> (1.19.4) к куке
+с одним из следующих значений:
+<literal>Strict</literal>,
+<literal>Lax</literal>,
+<literal>None</literal> или
+при помощи переменных (1.23.3).
+В последнем случае если переменная имеет пустое значение,
+то атрибут <literal>SameSite</literal> не будет добавлен к куке,
+если значение переменной равно
+<literal>Strict</literal>,
+<literal>Lax</literal> или
+<literal>None</literal>,
+то атрибуту будет назначено соответствующее значение,
+иначе атрибуту будет назначено значение <literal>Strict</literal>.
+</tag-desc>
+
+<tag-name><literal>secure</literal></tag-name>
+<tag-desc>
+Добавляет атрибут <literal>Secure</literal> к куке (1.7.11).
+</tag-desc>
+
+<tag-name><literal>path=</literal><value>путь</value></tag-name>
+<tag-desc>
+Задаёт <value>путь</value>, для которого устанавливается кука.
+</tag-desc>
+
+</list>
+Если пропущен тот или иной параметр, то соответствующего поля в куке не будет.
+</para>
+</tag-desc>
+
+<tag-name id="sticky_route"><literal>route</literal></tag-name>
+<tag-desc>
+
+<para>
+При использовании метода <literal>route</literal> проксируемый сервер назначает
+клиенту маршрут по получении первого запроса.
+Все последующие запросы от этого клиента будут содержать информацию о
+маршруте в куке или URI.
+Эта информация сравнивается с параметром “<literal>route</literal>” директивы
+<link id="server"/> для идентификации сервера, на который
+следует проксировать запрос.
+Если параметр “<literal>route</literal>” не задан, то именем маршрута
+будет являться MD5-хэш IP-адреса и порта
+(или пути UNIX-сокета) в шестнадцатеричном виде.
+Если назначенный сервер не может обработать запрос, выбирается новый сервер
+согласно настроенному методу балансировки как если бы в запросе не было
+информации о маршруте.
+</para>
+
+<para>
+Параметры метода <literal>route</literal> задают переменные, которые
+могут содержать информацию о маршруте.
+Первая непустая переменная используется для поиска соответствующего сервера.
+</para>
+
+<para>
+Пример:
+<example>
+map $cookie_jsessionid $route_cookie {
+    ~.+\.(?P&lt;route>\w+)$ $route;
+}
+
+map $request_uri $route_uri {
+    ~jsessionid=.+\.(?P&lt;route>\w+)$ $route;
+}
+
+upstream backend {
+    server backend1.example.com route=a;
+    server backend2.example.com route=b;
+
+    sticky route $route_cookie $route_uri;
+}
+</example>
+В этом примере маршрут берётся из куки “<literal>JSESSIONID</literal>”,
+если она присутствует в запросе.
+В противном случае используется маршрут из URI.
+</para>
+
+</tag-desc>
+
+<tag-name id="sticky_learn"><literal>learn</literal></tag-name>
+<tag-desc>
+<para>
+При использовании метода <literal>learn</literal> (1.7.1) nginx
+анализирует ответы от вышестоящего сервера и запоминает
+начатые им сессии, которые обычно передаются в HTTP-куке.
+<example>
+upstream backend {
+   server backend1.example.com:8080;
+   server backend2.example.com:8081;
+
+   sticky learn
+          create=$upstream_cookie_examplecookie
+          lookup=$cookie_examplecookie
+          zone=client_sessions:1m;
+}
+</example>
+
+В примере выше сервер группы создаёт сессию путём установки
+куки “<literal>EXAMPLECOOKIE</literal>” в своём ответе.
+Последующие запросы с этой кукой будут передаваться на этот же сервер.
+Если сервер не может обработать запрос, выбирается новый
+сервер как если бы клиент не имел привязки к серверу.
+</para>
+
+<para>
+Параметры <literal>create</literal> и <literal>lookup</literal>
+задают переменные, в которых соответственно указывается способ
+создания новых и поиска существующих сессий.
+Оба параметра могут быть указаны больше одного раза
+(в этом случае используется первая непустая переменная).
+</para>
+
+<para>
+Сессии хранятся в зоне разделяемой памяти, <value>имя</value> и
+<value>размер</value> которой задаются параметром <literal>zone</literal>.
+Зоны размером в 1 мегабайт достаточно для хранения около 4 тысяч сессий
+на 64-битной платформе.
+Сессии, к которым не было обращений в течение времени, заданного параметром
+<literal>timeout</literal>, удаляются из зоны.
+По умолчанию <literal>timeout</literal> равен 10 минутам.
+</para>
+
+<para id="sticky_learn_header">
+Параметр <literal>header</literal> (1.13.1) позволяет создавать сессию
+сразу после получения заголовков ответа от сервера группы.
+</para>
+
+<para id="sticky_learn_sync">
+Параметр <literal>sync</literal> (1.13.8) разрешает
+<link doc="../stream/ngx_stream_zone_sync_module.xml" id="zone_sync">синхронизацию</link>
+данной зоны разделяемой памяти.
+</para>
+
+</tag-desc>
+</list>
+</para>
+
+<para>
+<note>
+Эта директива доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</directive>
+
+
+<directive name="sticky_cookie_insert">
+<syntax><value>имя</value>
+[<literal>expires=</literal><value>время</value>]
+[<literal>domain=</literal><value>домен</value>]
+[<literal>path=</literal><value>путь</value>]</syntax>
+<default/>
+<context>upstream</context>
+
+<para>
+Эта директива устарела начиная с версии 1.5.7.
+Вместо неё следует использовать аналогичную директиву
+<link id="sticky"/> с изменённым синтаксисом:
+<note>
+<literal>sticky cookie</literal> <value>имя</value>
+[<literal>expires=</literal><value>время</value>]
+[<literal>domain=</literal><value>домен</value>]
+[<literal>path=</literal><value>путь</value>];
+</note>
+</para>
+
+</directive>
+
+</section>
+
+
+<section id="variables" name="Встроенные переменные">
+
+<para>
+Модуль <literal>ngx_http_upstream_module</literal>
+поддерживает следующие встроенные переменные:
+<list type="tag">
+
+<tag-name id="var_upstream_addr"><var>$upstream_addr</var></tag-name>
+<tag-desc>
+хранит IP-адрес и порт или путь к UNIX-сокету сервера группы.
+Если при обработке запроса были сделаны обращения к нескольким серверам,
+то их адреса разделяются запятой, например,
+“<literal>192.168.1.1:80, 192.168.1.2:80, unix:/tmp/sock</literal>”.
+Если произошло внутреннее перенаправление от одной группы серверов на другую
+с помощью
+<header>X-Accel-Redirect</header> или
+<link doc="ngx_http_core_module.xml" id="error_page"/>,
+то адреса, соответствующие разным группам серверов, разделяются двоеточием,
+например,
+“<literal>192.168.1.1:80, 192.168.1.2:80, unix:/tmp/sock : 192.168.10.1:80, 192.168.10.2:80</literal>”.
+Если сервер не может быть выбран,
+то переменная хранит имя группы серверов.
+</tag-desc>
+
+<tag-name id="var_upstream_bytes_received"><var>$upstream_bytes_received</var></tag-name>
+<tag-desc>
+число байт, полученных от сервера группы (1.11.4).
+Значения нескольких соединений
+разделяются запятыми и двоеточиями подобно адресам в переменной
+<link id="var_upstream_addr">$upstream_addr</link>.
+</tag-desc>
+
+<tag-name id="var_upstream_bytes_sent"><var>$upstream_bytes_sent</var></tag-name>
+<tag-desc>
+число байт, переданных на сервер группы (1.15.8).
+Значения нескольких соединений
+разделяются запятыми и двоеточиями подобно адресам в переменной
+<link id="var_upstream_addr">$upstream_addr</link>.
+</tag-desc>
+
+<tag-name id="var_upstream_cache_status"><var>$upstream_cache_status</var>
+</tag-name>
+<tag-desc>
+хранит статус доступа к кэшу ответов (0.8.3).
+Статус может быть одним из “<literal>MISS</literal>”,
+“<literal>BYPASS</literal>”, “<literal>EXPIRED</literal>”,
+“<literal>STALE</literal>”, “<literal>UPDATING</literal>”,
+“<literal>REVALIDATED</literal>” или “<literal>HIT</literal>”.
+</tag-desc>
+
+<tag-name id="var_upstream_connect_time"><var>$upstream_connect_time</var>
+</tag-name>
+<tag-desc>
+хранит время, затраченное на установление соединения с сервером группы (1.9.1);
+время хранится в секундах с точностью до миллисекунд.
+В случае SSL, включает в себя время, потраченное на handshake.
+Времена нескольких соединений
+разделяются запятыми и двоеточиями подобно адресам в переменной
+<link id="var_upstream_addr">$upstream_addr</link>.
+</tag-desc>
+
+<tag-name id="var_upstream_cookie_"><var>$upstream_cookie_</var><value>имя</value>
+</tag-name>
+<tag-desc>
+кука с указанным <value>именем</value>, переданная сервером группы
+в поле <header>Set-Cookie</header> заголовка ответа (1.7.1).
+Необходимо иметь в виду, что куки запоминаются только из ответа
+последнего сервера.
+</tag-desc>
+
+<tag-name id="var_upstream_header_time"><var>$upstream_header_time</var>
+</tag-name>
+<tag-desc>
+хранит время,
+затраченное на получение заголовка ответа от сервера группы (1.7.10);
+время хранится в секундах с точностью до миллисекунд.
+Времена нескольких ответов
+разделяются запятыми и двоеточиями подобно адресам в переменной
+<link id="var_upstream_addr">$upstream_addr</link>.
+</tag-desc>
+
+<tag-name id="var_upstream_http_"><var>$upstream_http_</var><value>имя</value></tag-name>
+<tag-desc>
+хранят поля заголовка ответа сервера.
+Например, поле заголовка ответа <header>Server</header>
+доступно в переменной <var>$upstream_http_server</var>.
+Правила преобразования имён полей заголовка ответа в имена переменных
+такие же, как для переменных с префиксом
+“<link doc="ngx_http_core_module.xml" id="var_http_">$http_</link>”.
+Необходимо иметь в виду, что поля заголовка запоминаются только из ответа
+последнего сервера.
+</tag-desc>
+
+<tag-name id="var_upstream_last_addr"><var>$upstream_last_addr</var></tag-name>
+<tag-desc>
+хранит IP-адрес или путь к UNIX-сокету
+последнего выбранного сервера группы (1.29.3).
+
+<para>
+<note>
+Эта переменная доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</tag-desc>
+
+<tag-name id="var_upstream_last_server_name"><var>$upstream_last_server_name</var></tag-name>
+<tag-desc>
+хранит имя последнего выбранного сервера группы (1.25.3);
+позволяет передать его
+<link doc="ngx_http_proxy_module.xml" id="proxy_ssl_server_name">через SNI</link>:
+<example>
+proxy_ssl_server_name on;
+proxy_ssl_name        $upstream_last_server_name;
+</example>
+
+<para>
+<note>
+Эта переменная доступна как часть
+<commercial_version>коммерческой подписки</commercial_version>.
+</note>
+</para>
+
+</tag-desc>
+
+<tag-name id="var_upstream_queue_time"><var>$upstream_queue_time</var></tag-name>
+<tag-desc>
+хранит время, проведённое запросом в <link id="queue">очереди</link>
+(1.13.9);
+время хранится в секундах с точностью до миллисекунд.
+Времена нескольких ответов
+разделяются запятыми и двоеточиями подобно адресам в переменной
+<link id="var_upstream_addr">$upstream_addr</link>.
+</tag-desc>
+
+<tag-name id="var_upstream_response_length"><var>$upstream_response_length</var>
+</tag-name>
+<tag-desc>
+хранит длину ответа, полученного от сервера группы (0.7.27);
+длина хранится в байтах.
+Длины нескольких ответов
+разделяются запятыми и двоеточиями подобно адресам в переменной
+<link id="var_upstream_addr">$upstream_addr</link>.
+</tag-desc>
+
+<tag-name id="var_upstream_response_time"><var>$upstream_response_time</var>
+</tag-name>
+<tag-desc>
+хранит время, затраченное на получение ответа от сервера группы;
+время хранится в секундах с точностью до миллисекунд.
+Времена нескольких ответов
+разделяются запятыми и двоеточиями подобно адресам в переменной
+<link id="var_upstream_addr">$upstream_addr</link>.
+</tag-desc>
+
+<tag-name id="var_upstream_status"><var>$upstream_status</var></tag-name>
+<tag-desc>
+хранит статус ответа, полученного от сервера группы.
+Статусы нескольких ответов
+разделяются запятыми и двоеточиями подобно адресам в переменной
+<link id="var_upstream_addr">$upstream_addr</link>.
+Если сервер не может быть выбран, то
+переменная хранит статус <http-status code="502" text="Bad Gateway"/>.
+</tag-desc>
+
+<tag-name id="var_upstream_trailer_"><var>$upstream_trailer_</var><value>имя</value></tag-name>
+<tag-desc>
+хранит поля из конца ответа,
+полученного от сервера группы (1.13.10).
+</tag-desc>
+
+</list>
+</para>
+
+</section>
+
+</module>

@@ -1,0 +1,135 @@
+<!--
+  Copyright (C) Igor Sysoev
+  Copyright (C) Nginx, Inc.
+  -->
+
+<!DOCTYPE article SYSTEM "../../../dtd/article.dtd">
+
+<article name="Отладочный лог"
+         link="/ru/docs/debugging_log.html"
+         lang="ru"
+         rev="6">
+
+
+<section>
+
+<para>
+Для работы отладочного лога nginx должен быть сконфигурирован с поддержкой
+отладки на этапе сборки:
+
+<programlisting>
+./configure --with-debug ...
+</programlisting>
+
+Затем нужно задать уровень <literal>debug</literal> с помощью
+директивы <link doc="ngx_core_module.xml" id="error_log"/>:
+
+<programlisting>
+error_log /path/to/log debug;
+</programlisting>
+
+Чтобы убедиться, что поддержка отладки сконфигурирована,
+необходимо выполнить команду <command>nginx -V</command>:
+
+<programlisting>
+configure arguments: --with-debug ...
+</programlisting>
+
+Готовые пакеты для <link doc="../linux_packages.xml">Linux</link>
+по умолчанию предоставляют поддержку отладочного лога
+при помощи бинарного файла <literal>nginx-debug</literal> (1.9.8),
+который можно запустить при помощи команд
+
+<programlisting>
+service nginx stop
+service nginx-debug start
+</programlisting>
+
+и затем задать уровень <literal>debug</literal>.
+Бинарная версия nginx для Windows всегда собирается с поддержкой отладочного
+лога, поэтому понадобится лишь задать уровень <literal>debug</literal>.
+</para>
+
+<para>
+Обратите внимание, что переопределение лога без одновременного указания
+уровня <literal>debug</literal> отключит отладочный лог.
+В примере ниже, переопределение лога на уровне
+<link doc="http/ngx_http_core_module.xml" id="server"/>
+отключает отладочный лог для этого сервера:
+<programlisting>
+error_log /path/to/log debug;
+
+http {
+    server {
+        error_log /path/to/log;
+        ...
+</programlisting>
+Чтобы избежать этого, следует либо закомментировать строку, переопределяющую
+лог, либо добавить определение уровня <literal>debug</literal>:
+<programlisting>
+error_log /path/to/log debug;
+
+http {
+    server {
+        error_log /path/to/log debug;
+        ...
+</programlisting>
+</para>
+
+</section>
+
+
+<section id="clients" name="Отладочный лог для определённых клиентов">
+
+<para>
+Можно включить отладочный лог только для
+<link doc="ngx_core_module.xml" id="debug_connection">определённых
+клиентских адресов</link>:
+
+<programlisting>
+error_log /path/to/log;
+
+events {
+    debug_connection 192.168.1.1;
+    debug_connection 192.168.10.0/24;
+}
+</programlisting>
+</para>
+
+</section>
+
+
+<section id="memory" name="Запись в кольцевой буфер в памяти">
+
+<para>
+Отладочный лог можно записывать в кольцевой буфер в памяти:
+<programlisting>
+error_log memory:32m debug;
+</programlisting>
+Запись в буфер в памяти на уровне <literal>debug</literal>
+не оказывает существенного влияния на производительность
+даже при высоких нагрузках.
+В этом случае лог может быть извлечён при помощи
+<command>gdb</command>-скрипта, подобного следующему:
+<example>
+set $log = ngx_cycle->log
+
+while $log->writer != ngx_log_memory_writer
+    set $log = $log->next
+end
+
+set $buf = (ngx_log_memory_buf_t *) $log->wdata
+dump binary memory debug_log.txt $buf->start $buf->end
+</example>
+Или при помощи такого <command>lldb</command>-скрипта:
+<example>
+expr ngx_log_t *$log = ngx_cycle->log
+expr while ($log->writer != ngx_log_memory_writer) { $log = $log->next; }
+expr ngx_log_memory_buf_t *$buf = (ngx_log_memory_buf_t *) $log->wdata
+memory read --force --outfile debug_log.txt --binary $buf->start $buf->end
+</example>
+</para>
+
+</section>
+
+</article>
